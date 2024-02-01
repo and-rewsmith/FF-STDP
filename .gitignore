@@ -1,1 +1,7 @@
 env/
+*.csv
+*.egg-info
+__pycache__
+
+generated_artifacts/*
+!generated_artifacts/README.md

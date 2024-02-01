@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from datasets.zenke_2a.constants import DATA_PATH
+
 
 def generate_sequential_dataset(num_samples=10000, num_clusters=2, cluster_switch_prob=0.01, cluster_spread=0.5):
     """
@@ -42,7 +44,6 @@ def generate_sequential_dataset(num_samples=10000, num_clusters=2, cluster_switc
 sequential_data = generate_sequential_dataset()
 
 # Save to CSV file
-csv_file_path = '/mnt/data/sequential_data.csv'
-sequential_data.to_csv(csv_file_path, index=False)
+sequential_data.to_csv(DATA_PATH, index=False)
 
-csv_file_path  # Return the file path for reference
+DATA_PATH  # Return the file path for reference
