@@ -22,4 +22,4 @@ jobs:
         pip install -r scripts/devops/requirements.txt
 
     - name: Run CI test
-      run: ./scripts/unit.sh
+      run: ./scripts/devops/unit.sh
