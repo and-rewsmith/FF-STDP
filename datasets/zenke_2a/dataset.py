@@ -1,7 +1,9 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-CSV_FILE_PATH = ""
+import pandas as pd
+
+from datasets.zenke_2a.constants import DATA_PATH
 
 
 class SequentialDataset(Dataset):
@@ -37,10 +39,10 @@ class SequentialDataset(Dataset):
 
 
 # Instantiate the dataset
-sequential_dataset = SequentialDataset(CSV_FILE_PATH)
+sequential_dataset = SequentialDataset(DATA_PATH)
 
 # DataLoader
-data_loader = DataLoader(sequential_dataset, batch_size=4, shuffle=False)
+data_loader = DataLoader(sequential_dataset, batch_size=1, shuffle=False)
 
 # For demonstration: Retrieve a batch of data
 for i, batch in enumerate(data_loader):
