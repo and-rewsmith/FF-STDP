@@ -22,8 +22,8 @@ jobs:
         python-version: 3.11
 
     - name: Run PEP 8 Compliance Check
-      run: ./test/scripts/pep8.sh
+      run: ./scripts/devops/pep8.sh
 
     - name: Run mypy linting
-      run: ./test/scripts/mypy.sh
+      run: ./scripts/devops/mypy.sh
     
