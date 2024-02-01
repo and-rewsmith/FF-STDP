@@ -9,26 +9,26 @@ NUM_SAMPLES_TEST = 100  # Smaller number of samples for testing
 
 
 @pytest.fixture
-def test_data():
+def test_data() -> pd.DataFrame:
     """Pytest fixture to generate test data."""
     return datagen.generate_sequential_dataset(num_samples=NUM_SAMPLES_TEST)
 
 
-def test_sequential_dataset_initialization(test_data):
+def test_sequential_dataset_initialization(test_data: pd.DataFrame) -> None:
     """Test the initialization of the SequentialDataset."""
     dataset = SequentialDataset(data_frame=test_data)
     assert isinstance(
         dataset, SequentialDataset), "Dataset should be an instance of SequentialDataset"
 
 
-def test_sequential_dataset_length(test_data):
+def test_sequential_dataset_length(test_data: pd.DataFrame) -> None:
     """Test the __len__ method of the SequentialDataset."""
     dataset = SequentialDataset(data_frame=test_data)
     assert len(dataset) == NUM_SAMPLES_TEST - \
         1, f"Length of dataset should be {NUM_SAMPLES_TEST - 1}"
 
 
-def test_sequential_dataset_getitem(test_data):
+def test_sequential_dataset_getitem(test_data: pd.DataFrame) -> None:
     """Test the __getitem__ method of the SequentialDataset."""
     dataset = SequentialDataset(data_frame=test_data)
     sample = dataset[0]
