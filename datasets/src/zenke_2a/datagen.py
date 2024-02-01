@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 
-from datasets.zenke_2a.constants import DATA_PATH
+from datasets.src.zenke_2a.constants import DATA_PATH
 
 
-def generate_sequential_dataset(num_samples=10000, num_clusters=2, cluster_switch_prob=0.01, cluster_spread=0.5):
+def generate_sequential_dataset(num_samples: int = 10000, num_clusters: int = 2, cluster_switch_prob: float = 0.01,
+                                cluster_spread: float = 0.5) -> pd.DataFrame:
     """
     Generates a sequential dataset with rare abrupt switches between clusters.
 
