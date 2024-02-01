@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Read the dataset from the CSV file
-from datasets.zenke_2a.constants import DATA_PATH
+from datasets.src.zenke_2a.constants import DATA_PATH
 
 data = pd.read_csv(DATA_PATH)
 

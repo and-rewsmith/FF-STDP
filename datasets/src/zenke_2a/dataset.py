@@ -3,23 +3,23 @@ from torch.utils.data import Dataset, DataLoader
 
 import pandas as pd
 
-from datasets.zenke_2a.constants import DATA_PATH
+from datasets.src.zenke_2a.constants import DATA_PATH
 
 
 class SequentialDataset(Dataset):
     """Custom Dataset class for handling sequential data."""
 
-    def __init__(self, csv_file):
+    def __init__(self, csv_file: str) -> None:
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
         """
         self.data_frame = pd.read_csv(csv_file)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data_frame) - 1  # Adjust for sequence generation
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         """
         Args:
             idx (int): Index of the data point.
