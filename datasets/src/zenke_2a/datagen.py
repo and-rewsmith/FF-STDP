@@ -41,10 +41,11 @@ def generate_sequential_dataset(num_samples: int = 10000, num_clusters: int = 2,
     return df
 
 
-# Generate the dataset
-sequential_data = generate_sequential_dataset()
+if __name__ == "__main__":
+    # Generate the dataset
+    sequential_data = generate_sequential_dataset()
 
-# Save to CSV file
-sequential_data.to_csv(DATA_PATH, index=False)
+    # Save to CSV file
+    sequential_data.to_csv(DATA_PATH, index=False)
 
-DATA_PATH  # Return the file path for reference
+    DATA_PATH  # Return the file path for reference
