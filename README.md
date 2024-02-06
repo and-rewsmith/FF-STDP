@@ -5,6 +5,19 @@
 
 This implementation of Latent Predictive Learning (LPL) is based on [this paper](https://www.nature.com/articles/s41593-023-01460-y) by Halvagal and Zenke.
 
+## Installation
+
+You can install with:
+```
+pip install -e .
+```
+
+Run files with this pattern:
+```
+python -m datasets.src.zenke_2a.visualize
+```
+
+
 ## Directory structure
 
 The structure is as follows:
