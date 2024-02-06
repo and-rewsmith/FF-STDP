@@ -22,5 +22,5 @@
 
 ## Pull Request Title Format
 
-See the [contributing guide](https://github.com/and-rewsmith/RecurrentForwardForward/blob/main/CONTRIBUTING.md) for details.
+See the [contributing guide](https://github.com/and-rewsmith/LPL-SNN/blob/main/CONTRIBUTING.md) for details.
 
