@@ -2,10 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Read the dataset from the CSV file
-from datasets.src.zenke_2a.constants import DATA_PATH
+from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 
 if __name__ == "__main__":
-    data = pd.read_csv(DATA_PATH)
+    data = pd.read_csv(TRAIN_DATA_PATH)
 
     # Create a scatter plot
     plt.figure(figsize=(10, 6))
