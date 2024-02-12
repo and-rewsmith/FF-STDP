@@ -8,7 +8,7 @@ on:
       - reopened
 
 jobs:
-  smoke:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
