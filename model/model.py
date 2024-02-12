@@ -53,14 +53,14 @@ class Layer(nn.Module):
         self.forward_lif = snn.Leaky(
             beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
 
-        # self.current_spikes: torch.Tensor = torch.zeros(layer_spec.size)
+        # TODO: cap size
         self.spk_rec: List[torch.Tensor] = []
         self.mem_rec: List[torch.Tensor] = []
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.mem = self.forward_lif.init_leaky()  # reset/init hidden states at t=0
+        self.mem = self.forward_lif.init_leaky()
 
         self.optimizer = torch.optim.Adam(
             self.forward_weights.parameters(), lr=layer_settings.learning_rate)
@@ -89,7 +89,7 @@ class Layer(nn.Module):
     def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
         self.optimizer.zero_grad()
 
-        spk, mem = self.forward(data)
+        spk, _mem = self.forward(data)
         loss = torch.sum(spk)
         loss.backward()
 
