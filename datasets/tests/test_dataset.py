@@ -17,16 +17,16 @@ def test_data() -> pd.DataFrame:
 
 def test_sequential_dataset_initialization(test_data: pd.DataFrame) -> None:
     """Test the initialization of the SequentialDataset."""
-    datagen.generate_sequential_dataset()
-    dataset = SequentialDataset(TRAIN_DATA_PATH)
+    dataframe = datagen.generate_sequential_dataset()
+    dataset = SequentialDataset(dataframe)
     assert isinstance(
         dataset, SequentialDataset), "Dataset should be an instance of SequentialDataset"
 
 
 def test_sequential_dataset_getitem(test_data: pd.DataFrame) -> None:
     """Test the __getitem__ method of the SequentialDataset."""
-    datagen.generate_sequential_dataset()
-    dataset = SequentialDataset(TRAIN_DATA_PATH)
+    dataframe = datagen.generate_sequential_dataset()
+    dataset = SequentialDataset(dataframe)
 
     sample = dataset[0]
     assert torch.is_tensor(

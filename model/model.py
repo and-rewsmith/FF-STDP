@@ -50,7 +50,6 @@ class Layer(nn.Module):
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
-        # TODO: how does it know the size?
         self.forward_lif = snn.Leaky(
             beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
 
@@ -78,7 +77,7 @@ class Layer(nn.Module):
             current = self.forward_weights(
                 self.prev_layer.spk_rec[-1].detach())
         else:
-            data = data.detach()  # TODO: try remove
+            data = data.detach()
             current = self.forward_weights(data)
 
         spk, mem = self.forward_lif(current, self.mem)
@@ -157,12 +156,13 @@ if __name__ == "__main__":
         epochs=10
     )
 
-    train_sequential_dataset = SequentialDataset(TRAIN_DATA_PATH)
+    train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
+    train_sequential_dataset = SequentialDataset(train_dataframe)
     train_data_loader = DataLoader(
         train_sequential_dataset, batch_size=10, shuffle=False)
 
-    test_data_frame = pd.read_csv(TEST_DATA_PATH)
-    test_sequential_dataset = SequentialDataset(TEST_DATA_PATH)
+    test_dataframe = pd.read_csv(TEST_DATA_PATH)
+    test_sequential_dataset = SequentialDataset(test_dataframe)
     test_data_loader = DataLoader(
         test_sequential_dataset, batch_size=10, shuffle=False)
 
