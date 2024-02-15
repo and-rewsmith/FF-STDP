@@ -1,6 +1,7 @@
 import pytest
 import torch
 import pandas as pd
+
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
 from datasets.src.zenke_2a import datagen
