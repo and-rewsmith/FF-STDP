@@ -1,6 +1,6 @@
 import pytest
 
-from model.util import SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
+from model.src.util import SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
 
 
 def test_temporal_filter() -> None:
