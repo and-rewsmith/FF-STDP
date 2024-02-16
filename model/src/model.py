@@ -8,6 +8,7 @@ import snntorch as snn
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
+from model.src.util import TemporalFilter
 
 
 class Settings:
@@ -61,8 +62,14 @@ class Layer(nn.Module):
 
         self.mem = self.forward_lif.init_leaky()
 
-        self.optimizer = torch.optim.Adam(
-            self.forward_weights.parameters(), lr=layer_settings.learning_rate)
+        # TODO PREMERGE: we need to pick better tau values
+        self.alpha_filter = TemporalFilter(tau_rise=1, tau_fall=1)
+        self.epsilon_filter = TemporalFilter(tau_rise=1, tau_fall=1)
+        self.spike_moving_average = TemporalFilter(tau_rise=1, tau_fall=1)
+        self.variance_moving_average = TemporalFilter(tau_rise=1, tau_fall=1)
+
+        # self.optimizer = torch.optim.Adam(
+        #     self.forward_weights.parameters(), lr=layer_settings.learning_rate)
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
@@ -86,13 +93,13 @@ class Layer(nn.Module):
         return spk, mem
 
     def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
-        self.optimizer.zero_grad()
+        # self.optimizer.zero_grad()
 
         spk, _mem = self.forward(data)
-        loss = torch.sum(spk)
-        loss.backward()
+        # loss = torch.sum(spk)
+        # loss.backward()
 
-        self.optimizer.step()
+        # self.optimizer.step()
 
 
 class Net(nn.Module):
