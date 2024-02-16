@@ -10,17 +10,17 @@ on:
 jobs:
   check-title:
     runs-on: ubuntu-latest
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - name: Check PR Title
         run: |
-          # Fetch the PR title and escape backticks by replacing them with '\`'
-          title="${{ github.event.pull_request.title }}"
+          title="$PR_TITLE"
           sanitized_title="${title//\`/\\\`}"
-
+          
           correct_format_regex='^\[(feat|fix|docs|style|refactor|chore|perf|test|build|ci|revert)\]: .*'
-
+          
           if [[ ! "${sanitized_title}" =~ ${correct_format_regex} ]]; then
             echo "Error: Invalid PR Title '${title}'"
             echo "PR title must start with one of the following prefixes, enclosed in brackets: '[feat]:', '[fix]:', '[docs]:', '[style]:', '[refactor]:', '[chore]:', '[perf]:', '[test]:', '[build]:', '[ci]:', '[revert]:'"
             exit 1
-          fi
