@@ -50,6 +50,10 @@ class TemporalFilter:
         from reacting too strongly to what might be noise. Conversely, for a
         system with slow-moving dynamics, you might choose larger values for
         both tau_rise and tau_fall to avoid reacting to insignificant changes.
+
+        Zenke's paper uses:
+         * alpha: tau_rise of 2ms and a tau_fall of 10ms
+         * beta: tau_rise of 5ms and a tau_fall of 20ms
         """
         self.rise: Optional[torch.Tensor] = None
         self.fall: Optional[torch.Tensor] = None
@@ -76,7 +80,7 @@ class TemporalFilter:
 
 class SpikeMovingAverage:
 
-    def __init__(self, tau_mean: float) -> None:
+    def __init__(self, tau_mean: float = 600) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -84,6 +88,8 @@ class SpikeMovingAverage:
          * A smaller tau_mean will make the average more sensitive to recent spikes.
          * A larger tau_mean will give a smoother average that is less responsive to
            individual spikes, reflecting a longer-term average rate.
+
+        Zenke's paper uses a tau_mean of 600s
         """
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
@@ -106,7 +112,7 @@ class SpikeMovingAverage:
 
 class VarianceMovingAverage:
 
-    def __init__(self, tau_var: float) -> None:
+    def __init__(self, tau_var: float = .02) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -114,6 +120,8 @@ class VarianceMovingAverage:
          * A smaller tau_var makes the variance more sensitive to recent fluctuations.
          * A larger tau_var results in a smoother variance calculation, less affected
            by short-term changes and more reflective of long-term variability.
+
+        Zenke's paper uses a tau_var of 20ms
         """
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
