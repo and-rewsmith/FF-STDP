@@ -4,6 +4,7 @@ import pandas as pd
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 
 
+# TODO: can use guassian mixture model to generate data
 def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 100, num_clusters: int = 2,
                                 cluster_switch_prob: float = 0.01, cluster_spread: float = 0.5) -> pd.DataFrame:
     """

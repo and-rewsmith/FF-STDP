@@ -1,13 +1,12 @@
+import pandas as pd
 from typing import List, Optional, Self
 
 from torch import nn
 from torch.utils.data import DataLoader
 import torch
 import snntorch as snn
-import pandas as pd
 
-from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
-from datasets.src.zenke_2a.constants import TEST_DATA_PATH
+from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
 
 
@@ -126,6 +125,7 @@ class Net(nn.Module):
             if i < len(network_layer_settings) - 1:
                 layer.set_next_layer(self.layers[i+1])
 
+    # TODO: handle test data
     def process_data_online(self, train_loader: DataLoader, test_loader: DataLoader) -> None:
         for epoch in range(self.settings.epochs):
             for i, batch in enumerate(train_loader):
