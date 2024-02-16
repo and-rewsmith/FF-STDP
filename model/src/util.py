@@ -1,27 +1,27 @@
 import math
-from typing import Optional
+from typing import Any, Optional
 import snntorch as snn
 import torch
 
 
 class MovingAverageLIF(snn.LIF):
-    def __init__(self, *args, tau_mean, tau_var, **kwargs):
+    def __init__(self, *args: Any, tau_mean: float, tau_var: float, **kwargs: Any) -> None:
         super(MovingAverageLIF, self).__init__(*args, **kwargs)
         self.spike_moving_average = SpikeMovingAverage(tau_mean=tau_mean)
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
 
-    def forward(self, input):
-        spike = super(MovingAverageLIF, self).forward(input)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        spike: torch.Tensor = super(MovingAverageLIF, self).forward(input)
 
         mean_spike = self.spike_moving_average.apply(spike)
         self.variance_moving_average.apply(spike, mean_spike)
 
         return spike
 
-    def tracked_spike_moving_average(self):
+    def tracked_spike_moving_average(self) -> torch.Tensor:
         return self.spike_moving_average.tracked_value()
 
-    def tracked_variance_moving_average(self):
+    def tracked_variance_moving_average(self) -> torch.Tensor:
         return self.variance_moving_average.tracked_value()
 
 
@@ -50,13 +50,17 @@ class TemporalFilter:
         from reacting too strongly to what might be noise. Conversely, for a
         system with slow-moving dynamics, you might choose larger values for
         both tau_rise and tau_fall to avoid reacting to insignificant changes.
+
+        Zenke's paper uses:
+         * alpha: tau_rise of 2ms and a tau_fall of 10ms
+         * beta: tau_rise of 5ms and a tau_fall of 20ms
         """
         self.rise: Optional[torch.Tensor] = None
         self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, value: float, dt: float = 1) -> torch.Tensor:
+    def apply(self, value: torch.Tensor, dt: float = 1) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value)
@@ -76,7 +80,7 @@ class TemporalFilter:
 
 class SpikeMovingAverage:
 
-    def __init__(self, tau_mean: float) -> None:
+    def __init__(self, tau_mean: float = 600) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -84,6 +88,8 @@ class SpikeMovingAverage:
          * A smaller tau_mean will make the average more sensitive to recent spikes.
          * A larger tau_mean will give a smoother average that is less responsive to
            individual spikes, reflecting a longer-term average rate.
+
+        Zenke's paper uses a tau_mean of 600s
         """
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
@@ -98,12 +104,15 @@ class SpikeMovingAverage:
         return self.mean
 
     def tracked_value(self) -> torch.Tensor:
+        if self.mean is None:
+            raise ValueError("No data has been received yet")
+
         return self.mean
 
 
 class VarianceMovingAverage:
 
-    def __init__(self, tau_var: float) -> None:
+    def __init__(self, tau_var: float = .02) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -111,6 +120,8 @@ class VarianceMovingAverage:
          * A smaller tau_var makes the variance more sensitive to recent fluctuations.
          * A larger tau_var results in a smoother variance calculation, less affected
            by short-term changes and more reflective of long-term variability.
+
+        Zenke's paper uses a tau_var of 20ms
         """
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
@@ -127,4 +138,7 @@ class VarianceMovingAverage:
         return self.variance
 
     def tracked_value(self) -> torch.Tensor:
+        if self.variance is None:
+            raise ValueError("No data has been received yet")
+
         return self.variance
