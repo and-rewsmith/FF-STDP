@@ -1,27 +1,27 @@
 import math
-from typing import Optional
+from typing import Any, Optional
 import snntorch as snn
 import torch
 
 
 class MovingAverageLIF(snn.LIF):
-    def __init__(self, *args, tau_mean, tau_var, **kwargs):
+    def __init__(self, *args: Any, tau_mean: float, tau_var: float, **kwargs: Any) -> None:
         super(MovingAverageLIF, self).__init__(*args, **kwargs)
         self.spike_moving_average = SpikeMovingAverage(tau_mean=tau_mean)
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
 
-    def forward(self, input):
-        spike = super(MovingAverageLIF, self).forward(input)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        spike: torch.Tensor = super(MovingAverageLIF, self).forward(input)
 
         mean_spike = self.spike_moving_average.apply(spike)
         self.variance_moving_average.apply(spike, mean_spike)
 
         return spike
 
-    def tracked_spike_moving_average(self):
+    def tracked_spike_moving_average(self) -> torch.Tensor:
         return self.spike_moving_average.tracked_value()
 
-    def tracked_variance_moving_average(self):
+    def tracked_variance_moving_average(self) -> torch.Tensor:
         return self.variance_moving_average.tracked_value()
 
 
@@ -56,7 +56,7 @@ class TemporalFilter:
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, value: float, dt: float = 1) -> torch.Tensor:
+    def apply(self, value: torch.Tensor, dt: float = 1) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value)
@@ -98,6 +98,9 @@ class SpikeMovingAverage:
         return self.mean
 
     def tracked_value(self) -> torch.Tensor:
+        if self.mean is None:
+            raise ValueError("No data has been received yet")
+
         return self.mean
 
 
@@ -127,4 +130,7 @@ class VarianceMovingAverage:
         return self.variance
 
     def tracked_value(self) -> torch.Tensor:
+        if self.variance is None:
+            raise ValueError("No data has been received yet")
+
         return self.variance
