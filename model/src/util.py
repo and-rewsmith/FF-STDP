@@ -1,4 +1,28 @@
 import math
+from typing import Optional
+import snntorch as snn
+import torch
+
+
+class MovingAverageLIF(snn.LIF):
+    def __init__(self, *args, tau_mean, tau_var, **kwargs):
+        super(MovingAverageLIF, self).__init__(*args, **kwargs)
+        self.spike_moving_average = SpikeMovingAverage(tau_mean=tau_mean)
+        self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
+
+    def forward(self, input):
+        spike = super(MovingAverageLIF, self).forward(input)
+
+        mean_spike = self.spike_moving_average.apply(spike)
+        self.variance_moving_average.apply(spike, mean_spike)
+
+        return spike
+
+    def tracked_spike_moving_average(self):
+        return self.spike_moving_average.tracked_value()
+
+    def tracked_variance_moving_average(self):
+        return self.variance_moving_average.tracked_value()
 
 
 class TemporalFilter:
@@ -27,14 +51,22 @@ class TemporalFilter:
         system with slow-moving dynamics, you might choose larger values for
         both tau_rise and tau_fall to avoid reacting to insignificant changes.
         """
-        self.rise: float = 0
-        self.fall: float = 0
+        self.rise: Optional[torch.Tensor] = None
+        self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, error: float, dt: float = 1) -> float:
+    def apply(self, value: float, dt: float = 1) -> torch.Tensor:
+        if self.rise is None:
+            # Initialize rise based on the first error received
+            self.rise = torch.zeros_like(value)
+
+        if self.fall is None:
+            # Initialize fall based on the first error received
+            self.fall = torch.zeros_like(value)
+
         # Apply the exponential decay to the rise state and add the error
-        self.rise = self.rise * math.exp(-dt / self.tau_rise) + error
+        self.rise = self.rise * math.exp(-dt / self.tau_rise) + value
 
         # Apply the exponential decay to the fall state and add the rise state
         self.fall = self.fall * math.exp(-dt / self.tau_fall) + self.rise
@@ -53,15 +85,19 @@ class SpikeMovingAverage:
          * A larger tau_mean will give a smoother average that is less responsive to
            individual spikes, reflecting a longer-term average rate.
         """
-        self.mean: float = 0
+        self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
 
-    def apply(self, spike: float, dt: float = 1) -> float:
+    def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        if self.mean is None:
+            # Initialize mean based on the first spike received
+            self.mean = torch.zeros_like(spike)
+
         # Apply the exponential decay to the mean state and add the new spike value
         self.mean += (dt / self.tau_mean) * (spike - self.mean)
         return self.mean
 
-    def tracked_value(self) -> float:
+    def tracked_value(self) -> torch.Tensor:
         return self.mean
 
 
@@ -76,10 +112,13 @@ class VarianceMovingAverage:
          * A larger tau_var results in a smoother variance calculation, less affected
            by short-term changes and more reflective of long-term variability.
         """
-        self.variance: float = 0
+        self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
 
-    def apply(self, spike: float, spike_moving_average: float, dt: float = 1) -> float:
+    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        if self.variance is None:
+            # Initialize variance based on the first spike received
+            self.variance = torch.zeros_like(spike)
 
         # Apply the exponential decay to the variance state and add the squared deviation
         self.variance += (dt / self.tau_var) * \
@@ -87,5 +126,5 @@ class VarianceMovingAverage:
 
         return self.variance
 
-    def tracked_value(self) -> float:
+    def tracked_value(self) -> torch.Tensor:
         return self.variance
