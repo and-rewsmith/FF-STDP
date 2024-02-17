@@ -3,8 +3,6 @@ from typing import Any, Optional
 import snntorch as snn
 import torch
 
-# class
-
 
 class MovingAverageLIF(snn.LIF):
     def __init__(self, *args: Any, tau_mean: float, tau_var: float, **kwargs: Any) -> None:
