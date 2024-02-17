@@ -1,4 +1,28 @@
 import math
+from typing import Any, Optional
+import snntorch as snn
+import torch
+
+
+class MovingAverageLIF(snn.LIF):
+    def __init__(self, *args: Any, tau_mean: float, tau_var: float, **kwargs: Any) -> None:
+        super(MovingAverageLIF, self).__init__(*args, **kwargs)
+        self.spike_moving_average = SpikeMovingAverage(tau_mean=tau_mean)
+        self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        spike: torch.Tensor = super(MovingAverageLIF, self).forward(input)
+
+        mean_spike = self.spike_moving_average.apply(spike)
+        self.variance_moving_average.apply(spike, mean_spike)
+
+        return spike
+
+    def tracked_spike_moving_average(self) -> torch.Tensor:
+        return self.spike_moving_average.tracked_value()
+
+    def tracked_variance_moving_average(self) -> torch.Tensor:
+        return self.variance_moving_average.tracked_value()
 
 
 class TemporalFilter:
@@ -26,15 +50,30 @@ class TemporalFilter:
         from reacting too strongly to what might be noise. Conversely, for a
         system with slow-moving dynamics, you might choose larger values for
         both tau_rise and tau_fall to avoid reacting to insignificant changes.
+
+        Zenke's paper uses:
+         * alpha: tau_rise of 2ms and a tau_fall of 10ms
+         * beta: tau_rise of 5ms and a tau_fall of 20ms
+
+         TODO: Concern here is that we are initializing the rise and fall states
+                with zeros, which might not be the best approach.
         """
-        self.rise: float = 0
-        self.fall: float = 0
+        self.rise: Optional[torch.Tensor] = None
+        self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, error: float, dt: float = 1) -> float:
+    def apply(self, value: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        if self.rise is None:
+            # Initialize rise based on the first error received
+            self.rise = torch.zeros_like(value)
+
+        if self.fall is None:
+            # Initialize fall based on the first error received
+            self.fall = torch.zeros_like(value)
+
         # Apply the exponential decay to the rise state and add the error
-        self.rise = self.rise * math.exp(-dt / self.tau_rise) + error
+        self.rise = self.rise * math.exp(-dt / self.tau_rise) + value
 
         # Apply the exponential decay to the fall state and add the rise state
         self.fall = self.fall * math.exp(-dt / self.tau_fall) + self.rise
@@ -44,7 +83,7 @@ class TemporalFilter:
 
 class SpikeMovingAverage:
 
-    def __init__(self, tau_mean: float) -> None:
+    def __init__(self, tau_mean: float = 600) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -52,22 +91,34 @@ class SpikeMovingAverage:
          * A smaller tau_mean will make the average more sensitive to recent spikes.
          * A larger tau_mean will give a smoother average that is less responsive to
            individual spikes, reflecting a longer-term average rate.
+
+        Zenke's paper uses a tau_mean of 600s.
+
+        TODO: Concern here is that we are initializing the mean state with zeros,
+                which might not be the best approach.
         """
-        self.mean: float = 0
+        self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
 
-    def apply(self, spike: float, dt: float = 1) -> float:
+    def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        if self.mean is None:
+            # Initialize mean based on the first spike received
+            self.mean = torch.zeros_like(spike)
+
         # Apply the exponential decay to the mean state and add the new spike value
         self.mean += (dt / self.tau_mean) * (spike - self.mean)
         return self.mean
 
-    def tracked_value(self) -> float:
+    def tracked_value(self) -> torch.Tensor:
+        if self.mean is None:
+            raise ValueError("No data has been received yet")
+
         return self.mean
 
 
 class VarianceMovingAverage:
 
-    def __init__(self, tau_var: float) -> None:
+    def __init__(self, tau_var: float = .02) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -75,11 +126,19 @@ class VarianceMovingAverage:
          * A smaller tau_var makes the variance more sensitive to recent fluctuations.
          * A larger tau_var results in a smoother variance calculation, less affected
            by short-term changes and more reflective of long-term variability.
+
+        Zenke's paper uses a tau_var of 20ms.
+
+        TODO: Concern here is that we are initializing the variance state with zeros,
+                which might not be the best approach.
         """
-        self.variance: float = 0
+        self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
 
-    def apply(self, spike: float, spike_moving_average: float, dt: float = 1) -> float:
+    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        if self.variance is None:
+            # Initialize variance based on the first spike received
+            self.variance = torch.zeros_like(spike)
 
         # Apply the exponential decay to the variance state and add the squared deviation
         self.variance += (dt / self.tau_var) * \
@@ -87,5 +146,8 @@ class VarianceMovingAverage:
 
         return self.variance
 
-    def tracked_value(self) -> float:
+    def tracked_value(self) -> torch.Tensor:
+        if self.variance is None:
+            raise ValueError("No data has been received yet")
+
         return self.variance
