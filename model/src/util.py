@@ -56,6 +56,9 @@ class TemporalFilter:
         Zenke's paper uses:
          * alpha: tau_rise of 2ms and a tau_fall of 10ms
          * beta: tau_rise of 5ms and a tau_fall of 20ms
+
+         TODO: Concern here is that we are initializing the rise and fall states
+                with zeros, which might not be the best approach.
         """
         self.rise: Optional[torch.Tensor] = None
         self.fall: Optional[torch.Tensor] = None
@@ -91,7 +94,10 @@ class SpikeMovingAverage:
          * A larger tau_mean will give a smoother average that is less responsive to
            individual spikes, reflecting a longer-term average rate.
 
-        Zenke's paper uses a tau_mean of 600s
+        Zenke's paper uses a tau_mean of 600s.
+
+        TODO: Concern here is that we are initializing the mean state with zeros,
+                which might not be the best approach.
         """
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
@@ -123,7 +129,10 @@ class VarianceMovingAverage:
          * A larger tau_var results in a smoother variance calculation, less affected
            by short-term changes and more reflective of long-term variability.
 
-        Zenke's paper uses a tau_var of 20ms
+        Zenke's paper uses a tau_var of 20ms.
+
+        TODO: Concern here is that we are initializing the variance state with zeros,
+                which might not be the best approach.
         """
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
