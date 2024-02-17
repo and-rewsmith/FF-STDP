@@ -47,6 +47,8 @@ class Layer(nn.Module):
     def __init__(self, layer_settings: LayerSettings) -> None:
         super().__init__()
 
+        self.layer_settings = layer_settings
+
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
@@ -65,11 +67,6 @@ class Layer(nn.Module):
         # TODO PREMERGE: we need to pick better tau values
         self.alpha_filter = TemporalFilter(tau_rise=1, tau_fall=1)
         self.epsilon_filter = TemporalFilter(tau_rise=1, tau_fall=1)
-        self.spike_moving_average = TemporalFilter(tau_rise=1, tau_fall=1)
-        self.variance_moving_average = TemporalFilter(tau_rise=1, tau_fall=1)
-
-        # self.optimizer = torch.optim.Adam(
-        #     self.forward_weights.parameters(), lr=layer_settings.learning_rate)
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
