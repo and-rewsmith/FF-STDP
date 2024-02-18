@@ -1,7 +1,10 @@
+from collections import deque
 import math
 from typing import Any, Optional
 import snntorch as snn
 import torch
+
+MAX_RETAINED_SPIKES = 2
 
 
 class MovingAverageLIF(snn.LIF):
@@ -53,7 +56,7 @@ class TemporalFilter:
 
         Zenke's paper uses:
          * alpha: tau_rise of 2ms and a tau_fall of 10ms
-         * beta: tau_rise of 5ms and a tau_fall of 20ms
+         * epsilon: tau_rise of 5ms and a tau_fall of 20ms
 
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
@@ -99,8 +102,11 @@ class SpikeMovingAverage:
         """
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
+        self.spike_rec = deque(maxlen=MAX_RETAINED_SPIKES)
 
     def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
+        self.spike_rec.append(spike)
+
         if self.mean is None:
             # Initialize mean based on the first spike received
             self.mean = torch.zeros_like(spike)

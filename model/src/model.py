@@ -1,14 +1,42 @@
 import pandas as pd
-from typing import List, Optional, Self
+from typing import Deque, List, Optional, Self
 
 from torch import nn
 from torch.utils.data import DataLoader
 import torch
 import snntorch as snn
+from snntorch import spikegen
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
+from datasets.src.zenke_2a.datagen import generate_sequential_dataset
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import TemporalFilter
+from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter
+
+# Zenke's paper uses a theta_rest of -50mV
+THETA_REST = -50
+
+# Zenke's paper uses a beta of -1mV
+BETA = 1
+
+# Zenke's paper uses a lambda of 1
+LAMBDA_HEBBIAN = 1
+
+# Zenke's paper uses a xi of 1e-3
+XI = 1e-3
+
+# Zenke's paper uses a delta of 1e-5
+DELTA = 1e-5
+
+# Zenke's paper uses tau_rise and tau_fall of these values in units of ms
+TAU_RISE_ALPHA = 2
+TAU_FALL_ALPHA = 10
+TAU_RISE_EPSILON = 5
+TAU_FALL_EPSILON = 20
+
+MAX_RETAINED_MEMS = 2
+
+
+torch.set_printoptions(precision=10, sci_mode=False)
 
 
 class Settings:
@@ -52,21 +80,24 @@ class Layer(nn.Module):
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
-        self.forward_lif = snn.Leaky(
+        self.forward_lif = MovingAverageLIF(
             beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
 
-        # TODO: cap size
-        self.spk_rec: List[torch.Tensor] = []
-        self.mem_rec: List[torch.Tensor] = []
+        self.mem_rec: Deque[torch.Tensor] = Deque(maxlen=MAX_RETAINED_MEMS)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
         self.mem = self.forward_lif.init_leaky()
 
-        # TODO PREMERGE: we need to pick better tau values
-        self.alpha_filter = TemporalFilter(tau_rise=1, tau_fall=1)
-        self.epsilon_filter = TemporalFilter(tau_rise=1, tau_fall=1)
+        self.alpha_filter_first_term = TemporalFilter(
+            tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
+        self.epsilon_filter_second_term = TemporalFilter(
+            tau_rise=TAU_RISE_EPSILON, tau_fall=TAU_FALL_EPSILON)
+        self.alpha_filter_second_term = TemporalFilter(
+            tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
+
+        self.data_spike_moving_average = SpikeMovingAverage()
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
@@ -84,7 +115,6 @@ class Layer(nn.Module):
             current = self.forward_weights(data)
 
         spk, mem = self.forward_lif(current, self.mem)
-        self.spk_rec.append(spk)
         self.mem_rec.append(mem)
 
         return spk, mem
@@ -93,10 +123,55 @@ class Layer(nn.Module):
         # self.optimizer.zero_grad()
 
         spk, _mem = self.forward(data)
-        # loss = torch.sum(spk)
-        # loss.backward()
 
-        # self.optimizer.step()
+        """
+        x is mult?
+
+        separate alpha filters
+
+        resting membrane potential will interact in a specific way
+
+        baseline units we picked for tau_rise (interacts with other values in a weird way)
+        """
+
+        if data is not None:
+            self.data_spike_moving_average.apply(spk)
+
+        beta = self.layer_settings.beta
+
+        # first term
+        prev_layer_mem = 0 if data is not None else self.prev_layer.mem_rec[-1]
+        f_prime_u_i = beta * \
+            (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
+        spike_j = self.spk_rec[-1]
+        first_term_no_filter = f_prime_u_i * spike_j
+
+        first_term_epsilon = self.epsilon_filter_second_term.apply(
+            first_term_no_filter)
+        first_term_alpha = self.alpha_filter_first_term.apply(
+            first_term_epsilon)
+        first_term = first_term_alpha * self.layer_settings.learning_rate
+
+        # second term
+        prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
+            -1] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1]
+        prev_layer_two_spikes_ago = self.data_spike_moving_average.spike_rec[
+            -2] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-2]
+        prev_layer_spike_moving_average = self.data_spike_moving_average.tracked_value(
+        ) if data is not None else self.prev_layer.forward_lif.spike_moving_average.tracked_value()
+
+        second_term_no_filter = -1 * \
+            (prev_layer_most_recent_spike -
+             prev_layer_two_spikes_ago) + LAMBDA_HEBBIAN / (self.prev_layer.forward_lif.variance_moving_average.tracked_value() + XI) * (prev_layer_most_recent_spike - prev_layer_spike_moving_average)
+        second_term_alpha = self.alpha_filter_second_term.apply(
+            second_term_no_filter)
+
+        # third term
+        third_term = self.learning_rate * DELTA * \
+            self.forward_lif.spike_moving_average.spike_rec[-1]
+
+        # update weights
+        self.forward_weights.weight += first_term + second_term_alpha + third_term
 
 
 class Net(nn.Module):
@@ -134,7 +209,16 @@ class Net(nn.Module):
         for epoch in range(self.settings.epochs):
             for i, batch in enumerate(train_loader):
                 batch = batch.permute(1, 0, 2)
-                batch = batch[:, :, :1]
+                # TODO PREMERGE: remove
+                # batch = batch[:, :, :1]
+                print(batch)
+                print(batch.shape)
+
+                # poisson encode
+                spike_trains = spikegen.rate(batch, time_var_input=True)
+                print(spike_trains)
+                print(spike_trains.shape)
+                input()
 
                 print(
                     f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
@@ -151,9 +235,9 @@ if __name__ == "__main__":
 
     settings = Settings(
         layer_sizes=[784, 300, 10],
-        beta=0.9,
+        beta=BETA,
         learn_beta=False,
-        num_steps=10,
+        num_steps=25,
         data_size=1,
         batch_size=10,
         learning_rate=0.01,
@@ -161,9 +245,10 @@ if __name__ == "__main__":
     )
 
     train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
-    train_sequential_dataset = SequentialDataset(train_dataframe)
+    train_sequential_dataset = SequentialDataset(
+        train_dataframe, num_timesteps=settings.num_steps)
     train_data_loader = DataLoader(
-        train_sequential_dataset, batch_size=10, shuffle=False)
+        train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
     test_dataframe = pd.read_csv(TEST_DATA_PATH)
     test_sequential_dataset = SequentialDataset(test_dataframe)
@@ -172,3 +257,9 @@ if __name__ == "__main__":
 
     net = Net(settings)
     net.process_data_online(train_data_loader, test_data_loader)
+
+########################
+
+    # for i, batch in enumerate(train_data_loader):
+    #     print(batch.shape)
+    #     break
