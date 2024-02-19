@@ -10,7 +10,7 @@ from snntorch import spikegen
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.datagen import generate_sequential_dataset
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter
+from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = -50
@@ -80,10 +80,13 @@ class Layer(nn.Module):
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
-        self.forward_lif = MovingAverageLIF(
-            beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
+        self.forward_lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
+                                            beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
 
         self.mem_rec: Deque[torch.Tensor] = Deque(maxlen=MAX_RETAINED_MEMS)
+        for _ in range(2):
+            self.mem_rec.append(torch.zeros(
+                layer_settings.batch_size, layer_settings.size))
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
@@ -97,7 +100,9 @@ class Layer(nn.Module):
         self.alpha_filter_second_term = TemporalFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
 
-        self.data_spike_moving_average = SpikeMovingAverage()
+        self.data_spike_moving_average = SpikeMovingAverage(
+            batch_size=layer_settings.batch_size, layer_size=layer_settings.size)
+        self.variance_moving_average = VarianceMovingAverage()
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
@@ -114,16 +119,13 @@ class Layer(nn.Module):
             data = data.detach()
             current = self.forward_weights(data)
 
+        print(current.shape)
         spk, mem = self.forward_lif(current, self.mem)
         self.mem_rec.append(mem)
 
         return spk, mem
 
     def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
-        # self.optimizer.zero_grad()
-
-        spk, _mem = self.forward(data)
-
         """
         x is mult?
 
@@ -132,46 +134,55 @@ class Layer(nn.Module):
         resting membrane potential will interact in a specific way
 
         baseline units we picked for tau_rise (interacts with other values in a weird way)
+
+        how to handle spike, potential, and variance of prev layer
         """
 
-        if data is not None:
-            self.data_spike_moving_average.apply(spk)
+        with torch.no_grad():
+            spk, _mem = self.forward(data)
 
-        beta = self.layer_settings.beta
+            if data is not None:
+                spike_mean = self.data_spike_moving_average.apply(spk)
+                _variance = self.variance_moving_average.apply(
+                    spike=spk, spike_moving_average=spike_mean)
 
-        # first term
-        prev_layer_mem = 0 if data is not None else self.prev_layer.mem_rec[-1]
-        f_prime_u_i = beta * \
-            (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
-        spike_j = self.spk_rec[-1]
-        first_term_no_filter = f_prime_u_i * spike_j
+            beta = self.layer_settings.beta
 
-        first_term_epsilon = self.epsilon_filter_second_term.apply(
-            first_term_no_filter)
-        first_term_alpha = self.alpha_filter_first_term.apply(
-            first_term_epsilon)
-        first_term = first_term_alpha * self.layer_settings.learning_rate
+            # first term
+            prev_layer_mem = 0 if data is not None else self.prev_layer.mem_rec[-1]
+            f_prime_u_i = beta * \
+                (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
+            most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1]
+            first_term_no_filter = f_prime_u_i * most_recent_spike
 
-        # second term
-        prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
-            -1] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1]
-        prev_layer_two_spikes_ago = self.data_spike_moving_average.spike_rec[
-            -2] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-2]
-        prev_layer_spike_moving_average = self.data_spike_moving_average.tracked_value(
-        ) if data is not None else self.prev_layer.forward_lif.spike_moving_average.tracked_value()
+            first_term_epsilon = self.epsilon_filter_second_term.apply(
+                first_term_no_filter)
+            first_term_alpha = self.alpha_filter_first_term.apply(
+                first_term_epsilon)
+            first_term = first_term_alpha * self.layer_settings.learning_rate
 
-        second_term_no_filter = -1 * \
-            (prev_layer_most_recent_spike -
-             prev_layer_two_spikes_ago) + LAMBDA_HEBBIAN / (self.prev_layer.forward_lif.variance_moving_average.tracked_value() + XI) * (prev_layer_most_recent_spike - prev_layer_spike_moving_average)
-        second_term_alpha = self.alpha_filter_second_term.apply(
-            second_term_no_filter)
+            # second term
+            prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
+                -1] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1]
+            prev_layer_two_spikes_ago = self.data_spike_moving_average.spike_rec[
+                -2] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-2]
+            prev_layer_spike_moving_average = self.data_spike_moving_average.tracked_value(
+            ) if data is not None else self.prev_layer.forward_lif.spike_moving_average.tracked_value()
+            prev_layer_variance_moving_average = self.variance_moving_average.tracked_value(
+            ) if data is not None else self.prev_layer.forward_lif.variance_moving_average.tracked_value()
 
-        # third term
-        third_term = self.learning_rate * DELTA * \
-            self.forward_lif.spike_moving_average.spike_rec[-1]
+            second_term_no_filter = -1 * \
+                (prev_layer_most_recent_spike -
+                 prev_layer_two_spikes_ago) + LAMBDA_HEBBIAN / (prev_layer_variance_moving_average + XI) * (prev_layer_most_recent_spike - prev_layer_spike_moving_average)
+            second_term_alpha = self.alpha_filter_second_term.apply(
+                second_term_no_filter)
 
-        # update weights
-        self.forward_weights.weight += first_term + second_term_alpha + third_term
+            # third term
+            third_term = self.layer_settings.learning_rate * DELTA * \
+                self.forward_lif.spike_moving_average.spike_rec[-1]
+
+            # update weights
+            self.forward_weights.weight += first_term + second_term_alpha + third_term
 
 
 class Net(nn.Module):
@@ -208,25 +219,27 @@ class Net(nn.Module):
     def process_data_online(self, train_loader: DataLoader, test_loader: DataLoader) -> None:
         for epoch in range(self.settings.epochs):
             for i, batch in enumerate(train_loader):
+                # permute to (num_steps, batch_size, data_size)
                 batch = batch.permute(1, 0, 2)
+
                 # TODO PREMERGE: remove
                 # batch = batch[:, :, :1]
-                print(batch)
-                print(batch.shape)
 
-                # poisson encode
-                spike_trains = spikegen.rate(batch, time_var_input=True)
-                print(spike_trains)
-                print(spike_trains.shape)
-                input()
+                # # poisson encode
+                # print(batch)
+                # print(batch.shape)
+                # spike_trains = spikegen.rate(batch, time_var_input=True)
+                # print(spike_trains)
+                # print(spike_trains.shape)
+                # input()
 
                 print(
                     f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
 
-                for _timestep in range(batch.shape[0]):
+                for timestep in range(batch.shape[0]):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
-                            layer.train_forward(batch)
+                            layer.train_forward(batch[timestep])
                         else:
                             layer.train_forward(None)
 
@@ -234,11 +247,11 @@ class Net(nn.Module):
 if __name__ == "__main__":
 
     settings = Settings(
-        layer_sizes=[784, 300, 10],
+        layer_sizes=[1],
         beta=BETA,
         learn_beta=False,
         num_steps=25,
-        data_size=1,
+        data_size=2,
         batch_size=10,
         learning_rate=0.01,
         epochs=10

@@ -20,7 +20,7 @@ def test_temporal_filter() -> None:
 
 
 def test_spike_moving_average() -> None:
-    sma = SpikeMovingAverage(tau_mean=1)
+    sma = SpikeMovingAverage(tau_mean=1, batch_size=1, layer_size=1)
 
     # Apply a single spike
     assert sma.apply(spike=torch.Tensor([1])).item() == 1.0
@@ -35,7 +35,7 @@ def test_spike_moving_average() -> None:
 def test_variance_moving_average() -> None:
     tau_mean = 10
     tau_var = 10
-    sma = SpikeMovingAverage(tau_mean)
+    sma = SpikeMovingAverage(tau_mean, batch_size=1, layer_size=1)
     vma = VarianceMovingAverage(tau_var)
 
     # Apply spikes to the moving average
