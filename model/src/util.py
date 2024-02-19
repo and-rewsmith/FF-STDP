@@ -16,7 +16,7 @@ class MovingAverageLIF(snn.Leaky):
     def __init__(self, *args: Any, batch_size: int, layer_size: int, tau_mean: float = TAU_MEAN, tau_var: float = TAU_VAR, **kwargs: Any) -> None:
         super(MovingAverageLIF, self).__init__(*args, **kwargs)
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=tau_mean, batch_size=batch_size, layer_size=layer_size)
+            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size)
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
 
     def forward(self, current: torch.Tensor, mem: torch.Tensor) -> torch.Tensor:
@@ -95,7 +95,7 @@ class TemporalFilter:
 
 class SpikeMovingAverage:
 
-    def __init__(self, batch_size: int, layer_size: int, tau_mean: float = TAU_MEAN) -> None:
+    def __init__(self, batch_size: int, data_size: int, tau_mean: float = TAU_MEAN) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -114,7 +114,7 @@ class SpikeMovingAverage:
         self.spike_rec = deque(maxlen=MAX_RETAINED_SPIKES)
         for _ in range(2):
             self.spike_rec.append(torch.zeros(
-                batch_size, layer_size))
+                batch_size, data_size))
 
     def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
         self.spike_rec.append(spike)

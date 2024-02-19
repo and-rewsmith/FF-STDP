@@ -61,7 +61,7 @@ class Settings:
 
 class LayerSettings:
     def __init__(self, prev_size: int, size: int, next_size: int, beta: float, learn_beta: bool,
-                 batch_size: int, learning_rate: float) -> None:
+                 batch_size: int, learning_rate: float, data_size: int) -> None:
         self.prev_size = prev_size
         self.size = size
         self.next_size = next_size
@@ -69,6 +69,7 @@ class LayerSettings:
         self.learn_beta = learn_beta
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.data_size = data_size
 
 
 class Layer(nn.Module):
@@ -101,7 +102,7 @@ class Layer(nn.Module):
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
 
         self.data_spike_moving_average = SpikeMovingAverage(
-            batch_size=layer_settings.batch_size, layer_size=layer_settings.size)
+            batch_size=layer_settings.batch_size, data_size=self.layer_settings.data_size)
         self.variance_moving_average = VarianceMovingAverage()
 
     def set_next_layer(self, next_layer: Self) -> None:
@@ -136,30 +137,38 @@ class Layer(nn.Module):
         baseline units we picked for tau_rise (interacts with other values in a weird way)
 
         how to handle spike, potential, and variance of prev layer
+
+        different sizes:
+        - S_j is smaller size than f_U_i (broadcast)
+
+        Hadamard product?
+
+        How to handle multiple dimensions in neuron?
         """
 
         with torch.no_grad():
+            if data is not None:
+                data_mean = self.data_spike_moving_average.apply(data)
+                _variance = self.variance_moving_average.apply(
+                    spike=data, spike_moving_average=data_mean)
+
             spk, _mem = self.forward(data)
             print("spike shape: {}", str(spk.shape))
             print("mem shape: {}", str(_mem.shape))
             input()
 
-            if data is not None:
-                spike_mean = self.data_spike_moving_average.apply(spk)
-                _variance = self.variance_moving_average.apply(
-                    spike=spk, spike_moving_average=spike_mean)
-
             beta = self.layer_settings.beta
 
             # first term
             prev_layer_mem = torch.zeros(
-                self.layer_settings.batch_size, self.layer_settings.size) if data is not None else self.prev_layer.mem_rec[-1]
+                self.layer_settings.batch_size, self.layer_settings.data_size) if data is not None else self.prev_layer.mem_rec[-1]
             f_prime_u_i = beta * \
                 (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
-            most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1]
-            first_term_no_filter = f_prime_u_i * most_recent_spike
+            f_prime_u_i = f_prime_u_i.unsqueeze(1)
+            most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1].unsqueeze(
+                2)
+            first_term_no_filter = most_recent_spike * f_prime_u_i
 
-            print(self.mem_rec[-1].shape)
             print("f prime shape: {}", str(f_prime_u_i.shape))
             print("most recent spike shape: {}", str(most_recent_spike.shape))
             print("first term no filter shape: {}",
@@ -170,7 +179,8 @@ class Layer(nn.Module):
                 first_term_no_filter)
             first_term_alpha = self.alpha_filter_first_term.apply(
                 first_term_epsilon)
-            first_term = first_term_alpha * self.layer_settings.learning_rate
+            first_term = self.layer_settings.learning_rate * \
+                first_term_alpha * self.layer_settings.learning_rate
 
             print("first term epsilon shape: {}",
                   str(first_term_epsilon.shape))
@@ -179,6 +189,8 @@ class Layer(nn.Module):
             input()
 
             # second term
+            print(self.data_spike_moving_average.spike_rec[-1].shape)
+            print(self.data_spike_moving_average.spike_rec[-2].shape)
             prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
                 -1] if data is not None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1]
             prev_layer_two_spikes_ago = self.data_spike_moving_average.spike_rec[
@@ -193,13 +205,37 @@ class Layer(nn.Module):
                  prev_layer_two_spikes_ago) + LAMBDA_HEBBIAN / (prev_layer_variance_moving_average + XI) * (prev_layer_most_recent_spike - prev_layer_spike_moving_average)
             second_term_alpha = self.alpha_filter_second_term.apply(
                 second_term_no_filter)
+            second_term_alpha = second_term_alpha.unsqueeze(
+                1).expand(-1, self.layer_settings.size, -1)
+
+            print("prev layer most recent spike shape: {}",
+                  str(prev_layer_most_recent_spike.shape))
+            print("prev layer two spikes ago shape: {}", str(
+                prev_layer_two_spikes_ago.shape))
+            print("prev layer spike moving average shape: {}",
+                  str(prev_layer_spike_moving_average.shape))
+            print("prev layer variance moving average shape: {}",
+                  str(prev_layer_variance_moving_average.shape))
+            print("second term no filter shape: {}",
+                  str(second_term_no_filter.shape))
+            print("second term alpha shape: {}", str(second_term_alpha.shape))
+            input()
 
             # third term
             third_term = self.layer_settings.learning_rate * DELTA * \
                 self.forward_lif.spike_moving_average.spike_rec[-1]
+            prev_layer_size = self.layer_settings.data_size if data is not None else self.prev_layer.layer_settings.size
+            third_term = third_term.unsqueeze(
+                2).expand(-1, -1, prev_layer_size)
+            print("third term shape: {}", str(third_term.shape))
+            input()
 
             # update weights
-            self.forward_weights.weight += first_term + second_term_alpha + third_term
+            dw_dt = first_term * second_term_alpha + third_term
+            self.forward_weights.weight += dw_dt.sum(0) / dw_dt.shape[0]
+            print("weights shape: {}", str(self.forward_weights.weight.shape))
+            print(dw_dt.shape)
+            input()
 
 
 class Net(nn.Module):
@@ -216,7 +252,7 @@ class Net(nn.Module):
                 settings.layer_sizes) - 1 else 0
             layer_settings = LayerSettings(
                 prev_size, size, next_size, settings.beta, settings.learn_beta,
-                settings.batch_size, settings.learning_rate)
+                settings.batch_size, settings.learning_rate, settings.data_size)
             network_layer_settings.append(layer_settings)
 
         # make layers
@@ -279,9 +315,3 @@ if __name__ == "__main__":
 
     net = Net(settings)
     net.process_data_online(train_data_loader, test_data_loader)
-
-########################
-
-    # for i, batch in enumerate(train_data_loader):
-    #     print(batch.shape)
-    #     break
