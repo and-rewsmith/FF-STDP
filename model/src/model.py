@@ -140,6 +140,9 @@ class Layer(nn.Module):
 
         with torch.no_grad():
             spk, _mem = self.forward(data)
+            print("spike shape: {}", str(spk.shape))
+            print("mem shape: {}", str(_mem.shape))
+            input()
 
             if data is not None:
                 spike_mean = self.data_spike_moving_average.apply(spk)
@@ -149,17 +152,31 @@ class Layer(nn.Module):
             beta = self.layer_settings.beta
 
             # first term
-            prev_layer_mem = 0 if data is not None else self.prev_layer.mem_rec[-1]
+            prev_layer_mem = torch.zeros(
+                self.layer_settings.batch_size, self.layer_settings.size) if data is not None else self.prev_layer.mem_rec[-1]
             f_prime_u_i = beta * \
                 (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
             most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1]
             first_term_no_filter = f_prime_u_i * most_recent_spike
+
+            print(self.mem_rec[-1].shape)
+            print("f prime shape: {}", str(f_prime_u_i.shape))
+            print("most recent spike shape: {}", str(most_recent_spike.shape))
+            print("first term no filter shape: {}",
+                  str(first_term_no_filter.shape))
+            input()
 
             first_term_epsilon = self.epsilon_filter_second_term.apply(
                 first_term_no_filter)
             first_term_alpha = self.alpha_filter_first_term.apply(
                 first_term_epsilon)
             first_term = first_term_alpha * self.layer_settings.learning_rate
+
+            print("first term epsilon shape: {}",
+                  str(first_term_epsilon.shape))
+            print("first term alpha shape: {}", str(first_term_alpha.shape))
+            print("first term shape: {}", str(first_term.shape))
+            input()
 
             # second term
             prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
