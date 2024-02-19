@@ -222,24 +222,16 @@ class Net(nn.Module):
                 # permute to (num_steps, batch_size, data_size)
                 batch = batch.permute(1, 0, 2)
 
-                # TODO PREMERGE: remove
-                # batch = batch[:, :, :1]
-
-                # # poisson encode
-                # print(batch)
-                # print(batch.shape)
-                # spike_trains = spikegen.rate(batch, time_var_input=True)
-                # print(spike_trains)
-                # print(spike_trains.shape)
-                # input()
+                # poisson encode
+                spike_trains = spikegen.rate(batch, time_var_input=True)
 
                 print(
-                    f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
+                    f"Epoch {epoch} - Batch {i} - Sample data: {spike_trains.shape}")
 
-                for timestep in range(batch.shape[0]):
+                for timestep in range(spike_trains.shape[0]):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
-                            layer.train_forward(batch[timestep])
+                            layer.train_forward(spike_trains[timestep])
                         else:
                             layer.train_forward(None)
 
