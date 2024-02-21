@@ -83,11 +83,12 @@ class Layer(nn.Module):
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
+        torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
         self.forward_lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
                                             beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
 
         self.mem_rec: Deque[torch.Tensor] = Deque(maxlen=MAX_RETAINED_MEMS)
-        for _ in range(2):
+        for _ in range(MAX_RETAINED_MEMS):
             self.mem_rec.append(torch.zeros(
                 layer_settings.batch_size, layer_settings.size))
 
@@ -153,8 +154,6 @@ class Layer(nn.Module):
         across the batch dimension and divided by the batch size to form the
         final dw_ij/dt matrix. We then apply this to the weights.
         """
-        # print(self.forward_weights.weight)
-
         with torch.no_grad():
             if data is not None:
                 data_mean = self.data_spike_moving_average.apply(data)
@@ -171,7 +170,6 @@ class Layer(nn.Module):
                 if self.prev_layer is None else self.prev_layer.mem_rec[-1]
             f_prime_u_i = beta * \
                 (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
-            print("f prime u i: ", f_prime_u_i)
             f_prime_u_i = f_prime_u_i.unsqueeze(1)
             most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1].unsqueeze(
                 2)
