@@ -8,9 +8,9 @@ import torch
 MAX_RETAINED_SPIKES = 2
 
 # Zenke's paper uses a tau_mean of 600s
-TAU_MEAN = 600
+TAU_MEAN = 600000
 # Zenke's paper uses a tau_var of 20ms
-TAU_VAR = .02
+TAU_VAR = 20
 
 
 class MovingAverageLIF(snn.Leaky):

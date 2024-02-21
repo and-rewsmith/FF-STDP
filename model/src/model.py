@@ -13,7 +13,7 @@ from datasets.src.zenke_2a.dataset import SequentialDataset
 from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
 
 # Zenke's paper uses a theta_rest of -50mV
-THETA_REST = -50
+THETA_REST = 0
 
 # Zenke's paper uses a beta of -1mV
 BETA = 1
@@ -34,6 +34,8 @@ TAU_RISE_EPSILON = 5
 TAU_FALL_EPSILON = 20
 
 MAX_RETAINED_MEMS = 2
+
+DATA_MEM_ASSUMPTION = 0.5
 
 
 torch.set_printoptions(precision=10, sci_mode=False)
@@ -121,6 +123,7 @@ class Layer(nn.Module):
             current = self.forward_weights(data)
 
         spk, mem = self.forward_lif(current, self.mem)
+        self.mem = mem
         self.mem_rec.append(mem)
 
         return spk, mem
@@ -128,7 +131,7 @@ class Layer(nn.Module):
     def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
         """
         The LPL learning rule is implemented here. It is defined as dw_ji/dt,
-        for which we accelerate this with matrices.
+        for which we optimize the computation with matrices.
 
         This learning rule is broken up into three terms:
 
@@ -150,6 +153,7 @@ class Layer(nn.Module):
         across the batch dimension and divided by the batch size to form the
         final dw_ij/dt matrix. We then apply this to the weights.
         """
+        # print(self.forward_weights.weight)
 
         with torch.no_grad():
             if data is not None:
@@ -162,11 +166,12 @@ class Layer(nn.Module):
             beta = self.layer_settings.beta
 
             # first term
-            prev_layer_mem = torch.zeros(
-                self.layer_settings.batch_size, self.layer_settings.data_size) \
+            prev_layer_mem = torch.ones(
+                self.layer_settings.batch_size, self.layer_settings.data_size) * DATA_MEM_ASSUMPTION \
                 if self.prev_layer is None else self.prev_layer.mem_rec[-1]
             f_prime_u_i = beta * \
                 (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
+            print("f prime u i: ", f_prime_u_i)
             f_prime_u_i = f_prime_u_i.unsqueeze(1)
             most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1].unsqueeze(
                 2)
@@ -209,7 +214,8 @@ class Layer(nn.Module):
 
             # update weights
             dw_dt = first_term * second_term_alpha + third_term
-            self.forward_weights.weight += dw_dt.sum(0) / dw_dt.shape[0]
+            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+            self.forward_weights.weight += dw_dt
 
 
 class Net(nn.Module):
@@ -265,13 +271,15 @@ class Net(nn.Module):
 
 if __name__ == "__main__":
 
+    torch.manual_seed(1234)
+
     settings = Settings(
         layer_sizes=[1],
         beta=BETA,
         learn_beta=False,
         num_steps=25,
         data_size=2,
-        batch_size=10,
+        batch_size=1,
         learning_rate=0.01,
         epochs=10
     )
