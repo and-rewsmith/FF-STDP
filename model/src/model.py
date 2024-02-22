@@ -1,3 +1,4 @@
+import logging
 from typing import Deque, List, Optional, Self
 
 from torch import nn
@@ -15,11 +16,11 @@ from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter,
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
 
-# Zenke's paper uses a beta of -1mV
-BETA = 1
-
 # Zenke's paper uses a lambda of 1
-LAMBDA_HEBBIAN = 1
+LAMBDA_HEBBIAN = 0.001
+
+# Zenke's paper uses a beta of -1mV
+ZENKE_BETA = -1
 
 # Zenke's paper uses a xi of 1e-3
 XI = 1e-3
@@ -37,6 +38,8 @@ MAX_RETAINED_MEMS = 2
 
 DATA_MEM_ASSUMPTION = 0.5
 
+SNNTORCH_BETA = 0.85
+SNNTORCH_LEARN_BETA = False
 
 torch.set_printoptions(precision=10, sci_mode=False)
 
@@ -44,16 +47,12 @@ torch.set_printoptions(precision=10, sci_mode=False)
 class Settings:
     def __init__(self,
                  layer_sizes: list[int],
-                 beta: float,
-                 learn_beta: bool,
                  num_steps: int,
                  data_size: int,
                  batch_size: int,
                  learning_rate: float,
                  epochs: int) -> None:
         self.layer_sizes = layer_sizes
-        self.beta = beta
-        self.learn_beta = learn_beta
         self.num_steps = num_steps
         self.data_size = data_size
         self.batch_size = batch_size
@@ -62,13 +61,11 @@ class Settings:
 
 
 class LayerSettings:
-    def __init__(self, prev_size: int, size: int, next_size: int, beta: float, learn_beta: bool,
+    def __init__(self, prev_size: int, size: int, next_size: int,
                  batch_size: int, learning_rate: float, data_size: int) -> None:
         self.prev_size = prev_size
         self.size = size
         self.next_size = next_size
-        self.beta = beta
-        self.learn_beta = learn_beta
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.data_size = data_size
@@ -85,7 +82,7 @@ class Layer(nn.Module):
             layer_settings.prev_size, layer_settings.size)
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
         self.forward_lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                            beta=layer_settings.beta, learn_beta=layer_settings.learn_beta)
+                                            beta=SNNTORCH_BETA, learn_beta=SNNTORCH_LEARN_BETA)
 
         self.mem_rec: Deque[torch.Tensor] = Deque(maxlen=MAX_RETAINED_MEMS)
         for _ in range(MAX_RETAINED_MEMS):
@@ -106,7 +103,7 @@ class Layer(nn.Module):
 
         self.data_spike_moving_average = SpikeMovingAverage(
             batch_size=layer_settings.batch_size, data_size=self.layer_settings.data_size)
-        self.variance_moving_average = VarianceMovingAverage()
+        self.data_variance_moving_average = VarianceMovingAverage()
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
@@ -126,6 +123,11 @@ class Layer(nn.Module):
         spk, mem = self.forward_lif(current, self.mem)
         self.mem = mem
         self.mem_rec.append(mem)
+
+        logging.debug("")
+        logging.debug(f"current: {str(current)}")
+        logging.debug(f"mem: {str(mem)}")
+        logging.debug(f"spk: {str(spk)}")
 
         return spk, mem
 
@@ -157,19 +159,17 @@ class Layer(nn.Module):
         with torch.no_grad():
             if data is not None:
                 data_mean = self.data_spike_moving_average.apply(data)
-                _variance = self.variance_moving_average.apply(
+                _variance = self.data_variance_moving_average.apply(
                     spike=data, spike_moving_average=data_mean)
 
             spk, _mem = self.forward(data)
-
-            beta = self.layer_settings.beta
 
             # first term
             prev_layer_mem = torch.ones(
                 self.layer_settings.batch_size, self.layer_settings.data_size) * DATA_MEM_ASSUMPTION \
                 if self.prev_layer is None else self.prev_layer.mem_rec[-1]
-            f_prime_u_i = beta * \
-                (1 + beta * abs(prev_layer_mem - THETA_REST)) ** (-2)
+            f_prime_u_i = ZENKE_BETA * \
+                (1 + ZENKE_BETA * abs(prev_layer_mem - THETA_REST)) ** (-2)
             f_prime_u_i = f_prime_u_i.unsqueeze(1)
             most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1].unsqueeze(
                 2)
@@ -189,14 +189,17 @@ class Layer(nn.Module):
                 -2] if self.prev_layer is None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-2]
             prev_layer_spike_moving_average = self.data_spike_moving_average.tracked_value(
             ) if self.prev_layer is None else self.prev_layer.forward_lif.spike_moving_average.tracked_value()
-            prev_layer_variance_moving_average = self.variance_moving_average.tracked_value(
+            prev_layer_variance_moving_average = self.data_variance_moving_average.tracked_value(
             ) if self.prev_layer is None else self.prev_layer.forward_lif.variance_moving_average.tracked_value()
 
+            second_term_prediction_error = prev_layer_most_recent_spike - prev_layer_two_spikes_ago
+            second_term_deviation_divisor = LAMBDA_HEBBIAN / \
+                (prev_layer_variance_moving_average + XI)
+            second_term_deviation = prev_layer_most_recent_spike - \
+                prev_layer_spike_moving_average
             second_term_no_filter = -1 * \
-                (prev_layer_most_recent_spike -
-                 prev_layer_two_spikes_ago) + LAMBDA_HEBBIAN / \
-                (prev_layer_variance_moving_average + XI) * \
-                (prev_layer_most_recent_spike - prev_layer_spike_moving_average)
+                (second_term_prediction_error) + second_term_deviation_divisor * \
+                second_term_deviation
             second_term_alpha = self.alpha_filter_second_term.apply(
                 second_term_no_filter)
             second_term_alpha = second_term_alpha.unsqueeze(
@@ -215,6 +218,34 @@ class Layer(nn.Module):
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
+            logging.debug("")
+            logging.debug("first term stats:")
+            logging.debug(f"f prime u i: {f_prime_u_i}")
+            logging.debug("")
+            logging.debug("second term stats:")
+            logging.debug(
+                f"second_term_prediction_error: {second_term_prediction_error}")
+            logging.debug(
+                f"second_term_deviation_divisor: {second_term_deviation_divisor}")
+            logging.debug(f"second_term_deviation: {second_term_deviation}")
+            logging.debug(f"second term no filter: {second_term_no_filter}")
+            logging.debug(f"second term alpha: {second_term_alpha}")
+            logging.debug(
+                f"previous layer variance moving average: {prev_layer_variance_moving_average}")
+            logging.debug("")
+            logging.debug(f"first term: {first_term}")
+            logging.debug(f"second term alpha: {second_term_alpha}")
+            logging.debug(f"third term: {third_term}")
+            logging.debug("")
+            logging.debug(f"data shape: {data.shape}")
+            logging.debug(f"data: {data}")
+            logging.debug(f"dw_dt shape: {dw_dt.shape}")
+            logging.debug(f"dw_dt: {dw_dt}")
+            logging.debug(
+                f"forward weights shape: {self.forward_weights.weight.shape}")
+            logging.debug(f"forward weights: {self.forward_weights.weight}")
+            input()
+
 
 class Net(nn.Module):
     def __init__(self, settings: Settings) -> None:
@@ -229,7 +260,7 @@ class Net(nn.Module):
             next_size = settings.layer_sizes[i+1] if i < len(
                 settings.layer_sizes) - 1 else 0
             layer_settings = LayerSettings(
-                prev_size, size, next_size, settings.beta, settings.learn_beta,
+                prev_size, size, next_size,
                 settings.batch_size, settings.learning_rate, settings.data_size)
             network_layer_settings.append(layer_settings)
 
@@ -256,7 +287,7 @@ class Net(nn.Module):
                 # poisson encode
                 spike_trains = spikegen.rate(batch, time_var_input=True)
 
-                print(
+                logging.info(
                     f"Epoch {epoch} - Batch {i} - Sample data: {spike_trains.shape}")
 
                 for timestep in range(spike_trains.shape[0]):
@@ -267,14 +298,23 @@ class Net(nn.Module):
                             layer.train_forward(None)
 
 
+def set_logging() -> None:
+    """
+    Must be called after argparse.
+    """
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 if __name__ == "__main__":
 
+    torch.autograd.set_detect_anomaly(True)
     torch.manual_seed(1234)
+
+    set_logging()
 
     settings = Settings(
         layer_sizes=[1],
-        beta=BETA,
-        learn_beta=False,
         num_steps=25,
         data_size=2,
         batch_size=1,

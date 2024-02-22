@@ -77,7 +77,7 @@ class TemporalFilter:
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, value: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, value: torch.Tensor, dt: float = 0.1) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value)
@@ -118,7 +118,7 @@ class SpikeMovingAverage:
             self.spike_rec.append(torch.zeros(
                 batch_size, data_size))
 
-    def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor, dt: float = 0.1) -> torch.Tensor:
         self.spike_rec.append(spike)
 
         if self.mean is None:
@@ -155,7 +155,7 @@ class VarianceMovingAverage:
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
 
-    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = 0.1) -> torch.Tensor:
         if self.variance is None:
             # Initialize variance based on the first spike received
             self.variance = torch.zeros_like(spike)
