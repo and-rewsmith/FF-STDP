@@ -93,7 +93,7 @@ class Layer(nn.Module):
 
         self.alpha_filter_first_term = TemporalFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
-        self.epsilon_filter_second_term = TemporalFilter(
+        self.epsilon_filter_first_term = TemporalFilter(
             tau_rise=TAU_RISE_EPSILON, tau_fall=TAU_FALL_EPSILON)
         self.alpha_filter_second_term = TemporalFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
@@ -163,7 +163,7 @@ class Layer(nn.Module):
                 1)
             first_term_no_filter = prev_layer_most_recent_spike * f_prime_u_i
 
-            first_term_epsilon = self.epsilon_filter_second_term.apply(
+            first_term_epsilon = self.epsilon_filter_first_term.apply(
                 first_term_no_filter)
             first_term_alpha = self.alpha_filter_first_term.apply(
                 first_term_epsilon)
