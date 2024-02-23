@@ -191,7 +191,6 @@ class Layer(nn.Module):
                 2).expand(-1, -1, self.layer_settings.data_size)
 
             # third term
-
             prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
                 -1] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
             third_term = self.layer_settings.learning_rate * \
