@@ -45,6 +45,38 @@ SNNTORCH_LEARN_BETA = False
 ENCODE_SPIKE_TRAINS = True
 
 
+class SynapticWeightEquation:
+
+    class FirstTerm:
+        def __init__(self, alpha_filter: torch.Tensor, epsilon_filter: torch.Tensor, no_filter: torch.Tensor,
+                     f_prime_u_i: torch.Tensor, prev_layer_most_recent_spike: torch.Tensor) -> None:
+            self.alpha_filter = alpha_filter
+            self.epsilon_filter = epsilon_filter
+            self.no_filter = no_filter
+            self.f_prime_u_i = f_prime_u_i
+            self.prev_layer_most_recent_spike = prev_layer_most_recent_spike
+
+    class SecondTerm:
+        def __init__(self, alpha_filter: torch.Tensor, no_filter: torch.Tensor, prediction_error: torch.Tensor,
+                     deviation_scale: torch.Tensor, deviation: torch.Tensor) -> None:
+            self.alpha_filter = alpha_filter
+            self.no_filter = no_filter
+            self.prediction_error = prediction_error
+            self.deviation_scale = deviation_scale
+            self.deviation = deviation
+
+    class ThirdTerm:
+        def __init__(self, prev_layer_most_recent_spike: torch.Tensor,
+                     third_term: torch.Tensor) -> None:
+            self.prev_layer_most_recent_spike = prev_layer_most_recent_spike
+            self.third_term = third_term
+
+    def __init__(self, first_term: FirstTerm, second_term: SecondTerm, third_term: ThirdTerm) -> None:
+        self.first_term = first_term
+        self.second_term = second_term
+        self.third_term = third_term
+
+
 class Settings:
     def __init__(self,
                  layer_sizes: list[int],
@@ -126,6 +158,81 @@ class Layer(nn.Module):
 
         return spk, mem
 
+    def __log_equation_context(self, synaptic_weight_equation: SynapticWeightEquation, dw_dt: torch.Tensor,
+                               data: Optional[torch.Tensor] = None) -> None:
+        logging.debug("")
+        logging.debug("first term stats:")
+        logging.debug(
+            f"prev layer most recent spike: {synaptic_weight_equation.first_term.prev_layer_most_recent_spike}")
+        logging.debug(
+            f"zenke beta * abs: {ZENKE_BETA * abs(self.mem - THETA_REST)}")
+        logging.debug(
+            f"f prime u i: {synaptic_weight_equation.first_term.f_prime_u_i}")
+        logging.debug(
+            f"first term no filter: {synaptic_weight_equation.first_term.no_filter}")
+        logging.debug(
+            f"first term epsilon: {synaptic_weight_equation.first_term.epsilon_filter}")
+        logging.debug(
+            f"first term alpha filter: {synaptic_weight_equation.first_term.alpha_filter}")
+        logging.debug("")
+        logging.debug("second term stats:")
+        logging.debug(
+            f"second_term_prediction_error: {synaptic_weight_equation.second_term.prediction_error}")
+        logging.debug(
+            f"second_term_deviation_scale: {synaptic_weight_equation.second_term.deviation_scale}")
+        logging.debug(
+            f"second_term_deviation: {synaptic_weight_equation.second_term.deviation}")
+        logging.debug(
+            f"second term no filter: {synaptic_weight_equation.second_term.no_filter}")
+        logging.debug(
+            f"second term alpha: {synaptic_weight_equation.second_term.alpha_filter}")
+        logging.debug("")
+        logging.debug(
+            f"first term alpha: {synaptic_weight_equation.first_term.alpha_filter}")
+        logging.debug(
+            f"second term alpha: {synaptic_weight_equation.second_term.alpha_filter}")
+        logging.debug(
+            f"third term: {synaptic_weight_equation.third_term.third_term}")
+        logging.debug("")
+        if data is not None:
+            logging.debug(f"data shape: {data.shape}")
+        logging.debug(f"data: {data}")
+        logging.debug(f"dw_dt shape: {dw_dt.shape}")
+        logging.debug(f"dw_dt: {dw_dt}")
+        logging.debug(
+            f"forward weights shape: {self.forward_weights.weight.shape}")
+        logging.debug(f"forward weights: {self.forward_weights.weight}")
+
+        wandb.log(
+            {"first_term_no_filter": synaptic_weight_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
+        wandb.log(
+            {"first_term_epsilon": synaptic_weight_equation.first_term.epsilon_filter[0][0][0]},
+            step=self.forward_counter)
+
+        wandb.log(
+            {"second_term_prediction_error": synaptic_weight_equation.second_term.prediction_error[0][0]},
+            step=self.forward_counter)
+        wandb.log(
+            {"second_term_deviation_scale": synaptic_weight_equation.second_term.deviation_scale[0][0]},
+            step=self.forward_counter)
+        wandb.log(
+            {"second_term_deviation": synaptic_weight_equation.second_term.deviation[0][0]}, step=self.forward_counter)
+        wandb.log(
+            {"second_term_no_filter": synaptic_weight_equation.second_term.no_filter[0][0]}, step=self.forward_counter)
+
+        wandb.log(
+            {"third_term_prev_layer_spike": synaptic_weight_equation.third_term.prev_layer_most_recent_spike[0][0]},
+            step=self.forward_counter)
+
+        wandb.log(
+            {"first_term": synaptic_weight_equation.first_term.alpha_filter[0][0][0]}, step=self.forward_counter)
+        wandb.log({"second_term": synaptic_weight_equation.second_term.alpha_filter[0][0][0]},
+                  step=self.forward_counter)
+        wandb.log(
+            {"third_term": synaptic_weight_equation.third_term.third_term[0][0][0]}, step=self.forward_counter)
+        wandb.log(
+            {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
+
     def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
         """
         The LPL learning rule is implemented here. It is defined as dw_ji/dt,
@@ -205,66 +312,35 @@ class Layer(nn.Module):
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
-            logging.debug("")
-            logging.debug("first term stats:")
-            logging.debug(
-                f"prev layer most recent spike: {prev_layer_most_recent_spike}")
-            logging.debug(
-                f"zenke beta * abs: {ZENKE_BETA * abs(self.mem - THETA_REST)}")
-            logging.debug(f"f prime u i: {f_prime_u_i}")
-            logging.debug(f"first term no filter: {first_term_no_filter}")
-            logging.debug(f"first term epsilon: {first_term_epsilon}")
-            logging.debug(f"first term alpha filter: {first_term_alpha}")
-            logging.debug("")
-            logging.debug("second term stats:")
-            logging.debug(
-                f"second_term_prediction_error: {second_term_prediction_error}")
-            logging.debug(
-                f"second_term_deviation_scale: {second_term_deviation_scale}")
-            logging.debug(f"second_term_deviation: {second_term_deviation}")
-            logging.debug(f"second term no filter: {second_term_no_filter}")
-            logging.debug(f"second term alpha: {second_term_alpha}")
-            logging.debug("")
-            logging.debug(f"first term alpha: {first_term_alpha}")
-            logging.debug(f"second term alpha: {second_term_alpha}")
-            logging.debug(f"third term: {third_term}")
-            logging.debug("")
-            if data is not None:
-                logging.debug(f"data shape: {data.shape}")
-            logging.debug(f"data: {data}")
-            logging.debug(f"dw_dt shape: {dw_dt.shape}")
-            logging.debug(f"dw_dt: {dw_dt}")
-            logging.debug(
-                f"forward weights shape: {self.forward_weights.weight.shape}")
-            logging.debug(f"forward weights: {self.forward_weights.weight}")
+            first_term = SynapticWeightEquation.FirstTerm(
+                alpha_filter=first_term_alpha,
+                epsilon_filter=first_term_epsilon,
+                no_filter=first_term_no_filter,
+                f_prime_u_i=f_prime_u_i,
+                prev_layer_most_recent_spike=prev_layer_most_recent_spike
+            )
+            second_term = SynapticWeightEquation.SecondTerm(
+                alpha_filter=second_term_alpha,
+                no_filter=second_term_no_filter,
+                prediction_error=second_term_prediction_error,
+                deviation_scale=second_term_deviation_scale,
+                deviation=second_term_deviation
+            )
+            third_term = SynapticWeightEquation.ThirdTerm(
+                prev_layer_most_recent_spike=prev_layer_most_recent_spike,
+                third_term=third_term
+            )
+            synaptic_weight_equation = SynapticWeightEquation(
+                first_term=first_term,
+                second_term=second_term,
+                third_term=third_term
+            )
 
-            wandb.log(
-                {"first_term_no_filter": first_term_no_filter[0][0][0]}, step=self.forward_counter)
-            wandb.log(
-                {"first_term_epsilon": first_term_epsilon[0][0][0]}, step=self.forward_counter)
-
-            wandb.log(
-                {"second_term_prediction_error": second_term_prediction_error[0][0]}, step=self.forward_counter)
-            wandb.log(
-                {"second_term_deviation_scale": second_term_deviation_scale[0][0]}, step=self.forward_counter)
-            wandb.log(
-                {"second_term_deviation": second_term_deviation[0][0]}, step=self.forward_counter)
-            wandb.log(
-                {"second_term_no_filter": second_term_no_filter[0][0]}, step=self.forward_counter)
-
-            wandb.log(
-                {"third_term_prev_layer_spike": prev_layer_most_recent_spike[0][0]}, step=self.forward_counter)
-
-            wandb.log(
-                {"first_term": first_term_alpha[0][0][0]}, step=self.forward_counter)
-            wandb.log({"second_term": second_term_alpha[0][0][0]},
-                      step=self.forward_counter)
-            wandb.log(
-                {"third_term": third_term[0][0][0]}, step=self.forward_counter)
-            wandb.log(
-                {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
             self.forward_counter += 1
 
+            self.__log_equation_context(synaptic_weight_equation, dw_dt, data)
+
+            # TODO: remove this when learning rule is stable
             input()
 
 
