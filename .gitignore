@@ -7,3 +7,5 @@ __pycache__
 
 generated_artifacts/*
 !generated_artifacts/README.md
+
+wandb/

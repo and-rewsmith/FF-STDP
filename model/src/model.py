@@ -7,6 +7,7 @@ import torch
 import pandas as pd
 import snntorch as snn
 from snntorch import spikegen
+import wandb
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.datagen import generate_sequential_dataset
@@ -20,7 +21,7 @@ THETA_REST = 0
 LAMBDA_HEBBIAN = 1
 
 # Zenke's paper uses a beta of -1mV
-ZENKE_BETA = -1
+ZENKE_BETA = 1
 
 # Zenke's paper uses a xi of 1e-3
 XI = 1e-3
@@ -98,6 +99,8 @@ class Layer(nn.Module):
         self.alpha_filter_second_term = TemporalFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
 
+        self.forward_counter = 0
+
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
 
@@ -158,7 +161,7 @@ class Layer(nn.Module):
                 (1 + ZENKE_BETA * abs(self.mem - THETA_REST)) ** (-2)
             f_prime_u_i = f_prime_u_i.unsqueeze(2)
             prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
-                -1] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
+                0] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
             prev_layer_most_recent_spike = prev_layer_most_recent_spike.unsqueeze(
                 1)
             first_term_no_filter = prev_layer_most_recent_spike * f_prime_u_i
@@ -167,17 +170,16 @@ class Layer(nn.Module):
                 first_term_no_filter)
             first_term_alpha = self.alpha_filter_first_term.apply(
                 first_term_epsilon)
-            first_term = self.layer_settings.learning_rate * \
-                first_term_alpha * self.layer_settings.learning_rate
 
             # second term
-            current_layer_most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1]
-            current_layer_two_spikes_ago = self.forward_lif.spike_moving_average.spike_rec[-2]
+            current_layer_most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[
+                0]
+            current_layer_delta_t_spikes_ago = self.forward_lif.spike_moving_average.spike_rec[-1]
             current_layer_spike_moving_average = self.forward_lif.spike_moving_average.tracked_value()
             current_layer_variance_moving_average = self.forward_lif.variance_moving_average.tracked_value()
 
             second_term_prediction_error = current_layer_most_recent_spike - \
-                current_layer_two_spikes_ago
+                current_layer_delta_t_spikes_ago
             second_term_deviation_scale = LAMBDA_HEBBIAN / \
                 (current_layer_variance_moving_average + XI)
             second_term_deviation = current_layer_most_recent_spike - \
@@ -192,14 +194,14 @@ class Layer(nn.Module):
 
             # third term
             prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
-                -1] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
-            third_term = self.layer_settings.learning_rate * \
-                DELTA * prev_layer_most_recent_spike
+                0] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
+            third_term = DELTA * prev_layer_most_recent_spike
             third_term = third_term.unsqueeze(
                 1).expand(-1, self.layer_settings.size, -1)
 
             # update weights
-            dw_dt = first_term * second_term_alpha + third_term
+            dw_dt = self.layer_settings.learning_rate * first_term_alpha * \
+                second_term_alpha + self.layer_settings.learning_rate * third_term
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
@@ -223,7 +225,7 @@ class Layer(nn.Module):
             logging.debug(f"second term no filter: {second_term_no_filter}")
             logging.debug(f"second term alpha: {second_term_alpha}")
             logging.debug("")
-            logging.debug(f"first term: {first_term}")
+            logging.debug(f"first term alpha: {first_term_alpha}")
             logging.debug(f"second term alpha: {second_term_alpha}")
             logging.debug(f"third term: {third_term}")
             logging.debug("")
@@ -235,6 +237,34 @@ class Layer(nn.Module):
             logging.debug(
                 f"forward weights shape: {self.forward_weights.weight.shape}")
             logging.debug(f"forward weights: {self.forward_weights.weight}")
+
+            wandb.log(
+                {"first_term_no_filter": first_term_no_filter[0][0][0]}, step=self.forward_counter)
+            wandb.log(
+                {"first_term_epsilon": first_term_epsilon[0][0][0]}, step=self.forward_counter)
+
+            wandb.log(
+                {"second_term_prediction_error": second_term_prediction_error[0][0]}, step=self.forward_counter)
+            wandb.log(
+                {"second_term_deviation_scale": second_term_deviation_scale[0][0]}, step=self.forward_counter)
+            wandb.log(
+                {"second_term_deviation": second_term_deviation[0][0]}, step=self.forward_counter)
+            wandb.log(
+                {"second_term_no_filter": second_term_no_filter[0][0]}, step=self.forward_counter)
+
+            wandb.log(
+                {"third_term_prev_layer_spike": prev_layer_most_recent_spike[0][0]}, step=self.forward_counter)
+
+            wandb.log(
+                {"first_term": first_term_alpha[0][0][0]}, step=self.forward_counter)
+            wandb.log({"second_term": second_term_alpha[0][0][0]},
+                      step=self.forward_counter)
+            wandb.log(
+                {"third_term": third_term[0][0][0]}, step=self.forward_counter)
+            wandb.log(
+                {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
+            self.forward_counter += 1
+
             input()
 
 
@@ -302,7 +332,6 @@ if __name__ == "__main__":
 
     torch.autograd.set_detect_anomaly(True)
     torch.manual_seed(1234)
-
     torch.set_printoptions(precision=10, sci_mode=False)
 
     set_logging()
@@ -315,6 +344,18 @@ if __name__ == "__main__":
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS
+    )
+
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="LPL-SNN",
+
+        # track hyperparameters and run metadata
+        config={
+            "architecture": "initial",
+            "dataset": "point-cloud",
+            "settings": settings,
+        }
     )
 
     train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
