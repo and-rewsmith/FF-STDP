@@ -17,7 +17,7 @@ from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter,
 THETA_REST = 0
 
 # Zenke's paper uses a lambda of 1
-LAMBDA_HEBBIAN = 0.001
+LAMBDA_HEBBIAN = 1
 
 # Zenke's paper uses a beta of -1mV
 ZENKE_BETA = -1
@@ -52,7 +52,7 @@ class Settings:
                  batch_size: int,
                  learning_rate: float,
                  epochs: int,
-                 encode_spike_trains) -> None:
+                 encode_spike_trains: bool) -> None:
         self.layer_sizes = layer_sizes
         self.num_steps = num_steps
         self.data_size = data_size
@@ -157,19 +157,12 @@ class Layer(nn.Module):
             # first term
             f_prime_u_i = ZENKE_BETA * \
                 (1 + ZENKE_BETA * abs(self.mem - THETA_REST)) ** (-2)
-            print(f"f_prime shape: {f_prime_u_i.shape}")
-            f_prime_u_i = f_prime_u_i.unsqueeze(1)
-            print(f"f_prime shape: {f_prime_u_i.shape}")
-            prev_layer_most_recent_spike = self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1] if self.prev_layer is not None \
-                else data
-            print(
-                f"prev layer most recent spike shape: {prev_layer_most_recent_spike.shape}")
+            f_prime_u_i = f_prime_u_i.unsqueeze(2)
+            prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
+                -1] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
             prev_layer_most_recent_spike = prev_layer_most_recent_spike.unsqueeze(
-                2)
-            print(
-                f"prev layer most recent spike shape: {prev_layer_most_recent_spike.shape}")
+                1)
             first_term_no_filter = prev_layer_most_recent_spike * f_prime_u_i
-            print(f"first term no filter shape: {first_term_no_filter.shape}")
 
             first_term_epsilon = self.epsilon_filter_second_term.apply(
                 first_term_no_filter)
@@ -177,8 +170,6 @@ class Layer(nn.Module):
                 first_term_epsilon)
             first_term = self.layer_settings.learning_rate * \
                 first_term_alpha * self.layer_settings.learning_rate
-            print(f"first term shape: {first_term.shape}")
-            input()
 
             # second term
             current_layer_most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1]
@@ -188,33 +179,26 @@ class Layer(nn.Module):
 
             second_term_prediction_error = current_layer_most_recent_spike - \
                 current_layer_two_spikes_ago
-            second_term_deviation_divisor = LAMBDA_HEBBIAN / \
+            second_term_deviation_scale = LAMBDA_HEBBIAN / \
                 (current_layer_variance_moving_average + XI)
             second_term_deviation = current_layer_most_recent_spike - \
                 current_layer_spike_moving_average
             second_term_no_filter = -1 * \
-                (second_term_prediction_error) + second_term_deviation_divisor * \
+                (second_term_prediction_error) + second_term_deviation_scale * \
                 second_term_deviation
             second_term_alpha = self.alpha_filter_second_term.apply(
                 second_term_no_filter)
-            print(second_term_alpha.shape)
             second_term_alpha = second_term_alpha.unsqueeze(
-                1).expand(-1, self.layer_settings.data_size, -1)
-            print(second_term_alpha.shape)
-            input()
+                2).expand(-1, -1, self.layer_settings.data_size)
 
             # third term
-            prev_layer_most_recent_spike = self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1] if self.prev_layer is not None \
-                else data
-            print("prev layer most recent spike shape: ",
-                  prev_layer_most_recent_spike.shape)
+
+            prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
+                -1] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
             third_term = self.layer_settings.learning_rate * \
                 DELTA * prev_layer_most_recent_spike
-            print("third term shape: ", third_term.shape)
             third_term = third_term.unsqueeze(
-                2).expand(-1, -1, self.layer_settings.size)
-            print("third term shape: ", third_term.shape)
-            input()
+                1).expand(-1, self.layer_settings.size, -1)
 
             # update weights
             dw_dt = first_term * second_term_alpha + third_term
@@ -225,13 +209,20 @@ class Layer(nn.Module):
 
             logging.debug("")
             logging.debug("first term stats:")
+            logging.debug(
+                f"prev layer most recent spike: {prev_layer_most_recent_spike}")
+            logging.debug(
+                f"zenke beta * abs: {ZENKE_BETA * abs(self.mem - THETA_REST)}")
             logging.debug(f"f prime u i: {f_prime_u_i}")
+            logging.debug(f"first term no filter: {first_term_no_filter}")
+            logging.debug(f"first term epsilon: {first_term_epsilon}")
+            logging.debug(f"first term alpha filter: {first_term_alpha}")
             logging.debug("")
             logging.debug("second term stats:")
             logging.debug(
                 f"second_term_prediction_error: {second_term_prediction_error}")
             logging.debug(
-                f"second_term_deviation_divisor: {second_term_deviation_divisor}")
+                f"second_term_deviation_scale: {second_term_deviation_scale}")
             logging.debug(f"second_term_deviation: {second_term_deviation}")
             logging.debug(f"second term no filter: {second_term_no_filter}")
             logging.debug(f"second term alpha: {second_term_alpha}")
@@ -240,7 +231,8 @@ class Layer(nn.Module):
             logging.debug(f"second term alpha: {second_term_alpha}")
             logging.debug(f"third term: {third_term}")
             logging.debug("")
-            logging.debug(f"data shape: {data.shape}")
+            if data is not None:
+                logging.debug(f"data shape: {data.shape}")
             logging.debug(f"data: {data}")
             logging.debug(f"dw_dt shape: {dw_dt.shape}")
             logging.debug(f"dw_dt: {dw_dt}")
@@ -248,97 +240,6 @@ class Layer(nn.Module):
                 f"forward weights shape: {self.forward_weights.weight.shape}")
             logging.debug(f"forward weights: {self.forward_weights.weight}")
             input()
-
-        # with torch.no_grad():
-        #     if data is not None:
-        #         data_mean = self.data_spike_moving_average.apply(data)
-        #         _variance = self.data_variance_moving_average.apply(
-        #             spike=data, spike_moving_average=data_mean)
-        #         self.forward(data)
-        #     else:
-        #         self.forward()
-
-        #     # first term
-        #     prev_layer_mem = torch.ones(
-        #         self.layer_settings.batch_size, self.layer_settings.data_size) * DATA_MEM_ASSUMPTION \
-        #         if self.prev_layer is None else self.prev_layer.mem
-        #     f_prime_u_i = ZENKE_BETA * \
-        #         (1 + ZENKE_BETA * abs(prev_layer_mem - THETA_REST)) ** (-2)
-        #     f_prime_u_i = f_prime_u_i.unsqueeze(1)
-        #     most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[-1].unsqueeze(
-        #         2)
-        #     first_term_no_filter = most_recent_spike * f_prime_u_i
-
-        #     first_term_epsilon = self.epsilon_filter_second_term.apply(
-        #         first_term_no_filter)
-        #     first_term_alpha = self.alpha_filter_first_term.apply(
-        #         first_term_epsilon)
-        #     first_term = self.layer_settings.learning_rate * \
-        #         first_term_alpha * self.layer_settings.learning_rate
-
-        #     # second term
-        #     prev_layer_most_recent_spike = self.data_spike_moving_average.spike_rec[
-        #         -1] if self.prev_layer is None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-1]
-        #     prev_layer_two_spikes_ago = self.data_spike_moving_average.spike_rec[
-        #         -2] if self.prev_layer is None else self.prev_layer.forward_lif.spike_moving_average.spike_rec[-2]
-        #     prev_layer_spike_moving_average = self.data_spike_moving_average.tracked_value(
-        #     ) if self.prev_layer is None else self.prev_layer.forward_lif.spike_moving_average.tracked_value()
-        #     prev_layer_variance_moving_average = self.data_variance_moving_average.tracked_value(
-        #     ) if self.prev_layer is None else self.prev_layer.forward_lif.variance_moving_average.tracked_value()
-
-        #     second_term_prediction_error = prev_layer_most_recent_spike - prev_layer_two_spikes_ago
-        #     second_term_deviation_divisor = LAMBDA_HEBBIAN / \
-        #         (prev_layer_variance_moving_average + XI)
-        #     second_term_deviation = prev_layer_most_recent_spike - \
-        #         prev_layer_spike_moving_average
-        #     second_term_no_filter = -1 * \
-        #         (second_term_prediction_error) + second_term_deviation_divisor * \
-        #         second_term_deviation
-        #     second_term_alpha = self.alpha_filter_second_term.apply(
-        #         second_term_no_filter)
-        #     second_term_alpha = second_term_alpha.unsqueeze(
-        #         1).expand(-1, self.layer_settings.size, -1)
-
-        #     # third term
-        #     third_term = self.layer_settings.learning_rate * DELTA * \
-        #         self.forward_lif.spike_moving_average.spike_rec[-1]
-        #     prev_layer_size = self.layer_settings.data_size if self.prev_layer is None \
-        #         else self.prev_layer.layer_settings.size
-        #     third_term = third_term.unsqueeze(
-        #         2).expand(-1, -1, prev_layer_size)
-
-        #     # update weights
-        #     dw_dt = first_term * second_term_alpha + third_term
-        #     dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
-        #     self.forward_weights.weight += dw_dt
-
-        #     logging.debug("")
-        #     logging.debug("first term stats:")
-        #     logging.debug(f"f prime u i: {f_prime_u_i}")
-        #     logging.debug("")
-        #     logging.debug("second term stats:")
-        #     logging.debug(
-        #         f"second_term_prediction_error: {second_term_prediction_error}")
-        #     logging.debug(
-        #         f"second_term_deviation_divisor: {second_term_deviation_divisor}")
-        #     logging.debug(f"second_term_deviation: {second_term_deviation}")
-        #     logging.debug(f"second term no filter: {second_term_no_filter}")
-        #     logging.debug(f"second term alpha: {second_term_alpha}")
-        #     logging.debug(
-        #         f"previous layer variance moving average: {prev_layer_variance_moving_average}")
-        #     logging.debug("")
-        #     logging.debug(f"first term: {first_term}")
-        #     logging.debug(f"second term alpha: {second_term_alpha}")
-        #     logging.debug(f"third term: {third_term}")
-        #     logging.debug("")
-        #     logging.debug(f"data shape: {data.shape}")
-        #     logging.debug(f"data: {data}")
-        #     logging.debug(f"dw_dt shape: {dw_dt.shape}")
-        #     logging.debug(f"dw_dt: {dw_dt}")
-        #     logging.debug(
-        #         f"forward weights shape: {self.forward_weights.weight.shape}")
-        #     logging.debug(f"forward weights: {self.forward_weights.weight}")
-        #     input()
 
 
 class Net(nn.Module):
@@ -414,7 +315,7 @@ if __name__ == "__main__":
         layer_sizes=[1],
         num_steps=25,
         data_size=2,
-        batch_size=3,
+        batch_size=1,
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS
