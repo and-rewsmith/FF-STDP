@@ -202,8 +202,6 @@ class Layer(nn.Module):
             # update weights
             dw_dt = first_term * second_term_alpha + third_term
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
-            print(self.forward_weights.weight.shape)
-            print(dw_dt.shape)
             self.forward_weights.weight += dw_dt
 
             logging.debug("")
