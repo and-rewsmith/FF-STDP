@@ -41,7 +41,7 @@ DATA_MEM_ASSUMPTION = 0.5
 SNNTORCH_BETA = 0.85
 SNNTORCH_LEARN_BETA = False
 
-torch.set_printoptions(precision=10, sci_mode=False)
+ENCODE_SPIKE_TRAINS = False
 
 
 class Settings:
@@ -51,13 +51,15 @@ class Settings:
                  data_size: int,
                  batch_size: int,
                  learning_rate: float,
-                 epochs: int) -> None:
+                 epochs: int,
+                 encode_spike_trains) -> None:
         self.layer_sizes = layer_sizes
         self.num_steps = num_steps
         self.data_size = data_size
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.epochs = epochs
+        self.encode_spike_trains = encode_spike_trains
 
 
 class LayerSettings:
@@ -284,16 +286,17 @@ class Net(nn.Module):
                 # permute to (num_steps, batch_size, data_size)
                 batch = batch.permute(1, 0, 2)
 
-                # poisson encode
-                spike_trains = spikegen.rate(batch, time_var_input=True)
+                if self.settings.encode_spike_trains:
+                    # poisson encode
+                    batch = spikegen.rate(batch, time_var_input=True)
 
                 logging.info(
-                    f"Epoch {epoch} - Batch {i} - Sample data: {spike_trains.shape}")
+                    f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
 
-                for timestep in range(spike_trains.shape[0]):
+                for timestep in range(batch.shape[0]):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
-                            layer.train_forward(spike_trains[timestep])
+                            layer.train_forward(batch[timestep])
                         else:
                             layer.train_forward(None)
 
@@ -311,6 +314,8 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.manual_seed(1234)
 
+    torch.set_printoptions(precision=10, sci_mode=False)
+
     set_logging()
 
     settings = Settings(
@@ -319,7 +324,8 @@ if __name__ == "__main__":
         data_size=2,
         batch_size=1,
         learning_rate=0.01,
-        epochs=10
+        epochs=10,
+        encode_spike_trains=ENCODE_SPIKE_TRAINS
     )
 
     train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
