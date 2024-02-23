@@ -131,17 +131,16 @@ class Layer(nn.Module):
         This learning rule is broken up into three terms:
 
          1. The first term contains S_j(t) * f'(U_i(t)). We form a matrix via
-            some unsqueezes to form a first term matrix of size (batch_size, j,
-            i). This is mainly done by matrix multiplication.
+            some unsqueezes to form a first term matrix of size (batch_size, i,
+            j). This is performed with outer product.
 
          2. The second term contains S_i. We form a matrix via some unsqueezes
             to form a second term matrix of size (batch_size, i, j). This is
-            mainly done by expanding the tensor to duplicate values for j
-            dimension.
+            performed by expanding and copying the tensor along the j dimension.
 
          3. The third term contains S_j. We form a matrix via some unsqueezes to
-            form a third term matrix of size (batch_size, j, i). This is mainly
-            done by expanding the tensor to duplicate values for i dimension.
+            form a third term matrix of size (batch_size, i, j). This is performed
+            by expanding and copying the tensor along the i dimension.
 
         The final dw_ij/dt is formed by a Hadamard product of the first term and
         the second term, and then adding the third term. This is then summed
