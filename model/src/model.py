@@ -46,7 +46,6 @@ ENCODE_SPIKE_TRAINS = True
 
 
 class SynapticWeightEquation:
-
     class FirstTerm:
         def __init__(self, alpha_filter: torch.Tensor, epsilon_filter: torch.Tensor, no_filter: torch.Tensor,
                      f_prime_u_i: torch.Tensor, prev_layer_most_recent_spike: torch.Tensor) -> None:
@@ -158,8 +157,9 @@ class Layer(nn.Module):
 
         return spk, mem
 
+    # TODO: this will need to be removed or refactored once we move to more complex network topologies
     def __log_equation_context(self, synaptic_weight_equation: SynapticWeightEquation, dw_dt: torch.Tensor,
-                               data: Optional[torch.Tensor] = None) -> None:
+                               spike: torch.Tensor, mem: torch.Tensor, data: Optional[torch.Tensor] = None) -> None:
         logging.debug("")
         logging.debug("first term stats:")
         logging.debug(
@@ -202,6 +202,9 @@ class Layer(nn.Module):
         logging.debug(
             f"forward weights shape: {self.forward_weights.weight.shape}")
         logging.debug(f"forward weights: {self.forward_weights.weight}")
+
+        wandb.log({"mem": mem[0][0]}, step=self.forward_counter)
+        wandb.log({"spike": spike[0][0]}, step=self.forward_counter)
 
         wandb.log(
             {"first_term_no_filter": synaptic_weight_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
@@ -259,9 +262,9 @@ class Layer(nn.Module):
         """
         with torch.no_grad():
             if data is not None:
-                self.forward(data)
+                spk, mem = self.forward(data)
             else:
-                self.forward()
+                spk, mem = self.forward()
 
             # first term
             f_prime_u_i = ZENKE_BETA * \
@@ -338,7 +341,7 @@ class Layer(nn.Module):
 
             self.forward_counter += 1
 
-            self.__log_equation_context(synaptic_weight_equation, dw_dt, data)
+            self.__log_equation_context(synaptic_weight_equation, dw_dt, spk, mem, data)
 
             # TODO: remove this when learning rule is stable
             input()
