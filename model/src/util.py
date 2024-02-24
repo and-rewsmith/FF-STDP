@@ -1,22 +1,39 @@
 import math
-from typing import Any, Optional
+from collections import deque
+from typing import Any, Deque, Optional, Tuple
+
 import snntorch as snn
 import torch
 
 
-class MovingAverageLIF(snn.LIF):
-    def __init__(self, *args: Any, tau_mean: float, tau_var: float, **kwargs: Any) -> None:
+# Zenke's paper uses a tau_mean of 600s
+TAU_MEAN = 600000
+# Zenke's paper uses a tau_var of 20ms
+TAU_VAR = 20
+# Zenke's paper uses a .1ms time step
+DT = .1
+
+MAX_RETAINED_SPIKES = int(20 / DT)
+
+
+class MovingAverageLIF(snn.Leaky):
+    def __init__(self, *args: Any, batch_size: int, layer_size: int, tau_mean: float = TAU_MEAN,
+                 tau_var: float = TAU_VAR, **kwargs: Any) -> None:
         super(MovingAverageLIF, self).__init__(*args, **kwargs)
-        self.spike_moving_average = SpikeMovingAverage(tau_mean=tau_mean)
+        self.spike_moving_average = SpikeMovingAverage(
+            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size)
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        spike: torch.Tensor = super(MovingAverageLIF, self).forward(input)
+    def forward(self, current: torch.Tensor, mem: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        forward_output = super(
+            MovingAverageLIF, self).forward(current, mem)
+        spike = forward_output[0]
+        mem = forward_output[1]
 
         mean_spike = self.spike_moving_average.apply(spike)
         self.variance_moving_average.apply(spike, mean_spike)
 
-        return spike
+        return (spike, mem)
 
     def tracked_spike_moving_average(self) -> torch.Tensor:
         return self.spike_moving_average.tracked_value()
@@ -53,7 +70,7 @@ class TemporalFilter:
 
         Zenke's paper uses:
          * alpha: tau_rise of 2ms and a tau_fall of 10ms
-         * beta: tau_rise of 5ms and a tau_fall of 20ms
+         * epsilon: tau_rise of 5ms and a tau_fall of 20ms
 
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
@@ -63,7 +80,7 @@ class TemporalFilter:
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, value: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value)
@@ -83,7 +100,7 @@ class TemporalFilter:
 
 class SpikeMovingAverage:
 
-    def __init__(self, tau_mean: float = 600) -> None:
+    def __init__(self, batch_size: int, data_size: int, tau_mean: float = TAU_MEAN) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -99,8 +116,14 @@ class SpikeMovingAverage:
         """
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
+        self.spike_rec: Deque[torch.Tensor] = deque(maxlen=MAX_RETAINED_SPIKES)
+        for _ in range(MAX_RETAINED_SPIKES):
+            self.spike_rec.append(torch.zeros(
+                batch_size, data_size))
 
-    def apply(self, spike: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
+        self.spike_rec.append(spike)
+
         if self.mean is None:
             # Initialize mean based on the first spike received
             self.mean = torch.zeros_like(spike)
@@ -118,7 +141,7 @@ class SpikeMovingAverage:
 
 class VarianceMovingAverage:
 
-    def __init__(self, tau_var: float = .02) -> None:
+    def __init__(self, tau_var: float = TAU_VAR) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -135,7 +158,7 @@ class VarianceMovingAverage:
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
 
-    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = 1) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.variance is None:
             # Initialize variance based on the first spike received
             self.variance = torch.zeros_like(spike)

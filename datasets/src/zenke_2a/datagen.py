@@ -24,7 +24,7 @@ def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 10
     data = []  # List to store data before converting to DataFrame
 
     for sample in range(num_samples):
-        current_cluster = 0
+        current_cluster = np.random.randint(0, num_clusters)
         for i in range(num_datapoints):
             # Decide whether to switch clusters
             if np.random.rand() < cluster_switch_prob:
@@ -40,6 +40,10 @@ def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 10
 
     # Convert list to DataFrame
     df = pd.DataFrame(data, columns=['sample', 'x', 'y'])
+
+    # Normalize columns independently
+    df[['x', 'y']] = (df[['x', 'y']] - df[['x', 'y']].min()) / \
+        (df[['x', 'y']].max() - df[['x', 'y']].min())
 
     return df
 
