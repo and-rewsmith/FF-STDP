@@ -310,8 +310,8 @@ class Layer(nn.Module):
                 1).expand(-1, self.layer_settings.size, -1)
 
             # update weights
-            dw_dt = self.layer_settings.learning_rate * first_term_alpha * \
-                second_term_alpha + self.layer_settings.learning_rate * third_term
+            dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
+                                                         second_term_alpha + third_term)
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
