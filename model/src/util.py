@@ -10,6 +10,8 @@ import torch
 TAU_MEAN = 600000
 # Zenke's paper uses a tau_var of 20ms
 TAU_VAR = 20
+# Zenke's paper uses a tau_stdp of 20ms
+TAU_STDP = 20
 # Zenke's paper uses a .1ms time step
 DT = .1
 
@@ -111,7 +113,7 @@ class SpikeMovingAverage:
 
         Zenke's paper uses a tau_mean of 600s.
 
-        TODO: Concern here is that we are initializing the mean state with zeros,
+        TODO: Concern here is that we are initializing the state with zeros,
                 which might not be the best approach.
         """
         self.mean: Optional[torch.Tensor] = None
@@ -152,7 +154,7 @@ class VarianceMovingAverage:
 
         Zenke's paper uses a tau_var of 20ms.
 
-        TODO: Concern here is that we are initializing the variance state with zeros,
+        TODO: Concern here is that we are initializing state with zeros,
                 which might not be the best approach.
         """
         self.variance: Optional[torch.Tensor] = None
@@ -174,3 +176,31 @@ class VarianceMovingAverage:
             raise ValueError("No data has been received yet")
 
         return self.variance
+
+
+class InhibitoryPlasticityTrace:
+
+    def __init__(self, tau_stdp: float = TAU_STDP) -> None:
+        """
+        Zenke's paper uses a tau_stdp of 20ms.
+
+        TODO: Concern here is that we are initializing the state with zeros,
+                which might not be the best approach.
+        """
+        self.trace: Optional[torch.Tensor] = None
+        self.tau_stdp: float = tau_stdp
+
+    def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
+        if self.trace is None:
+            # Initialize variance based on the first spike received
+            self.trace = torch.zeros_like(spike)
+
+        self.trace += (-1) * (dt / self.tau_stdp) * self.trace + spike
+
+        return self.trace
+
+    def tracked_value(self) -> torch.Tensor:
+        if self.tau_stdp is None:
+            raise ValueError("No data has been received yet")
+
+        return self.tau_stdp
