@@ -39,8 +39,7 @@ MAX_RETAINED_MEMS = 2
 
 DATA_MEM_ASSUMPTION = 0.5
 
-SNNTORCH_BETA = 0.85
-SNNTORCH_LEARN_BETA = False
+DECAY_BETA = 0.85
 
 ENCODE_SPIKE_TRAINS = True
 
@@ -116,12 +115,10 @@ class Layer(nn.Module):
             layer_settings.prev_size, layer_settings.size)
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
         self.forward_lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                            beta=SNNTORCH_BETA, learn_beta=SNNTORCH_LEARN_BETA)
+                                            beta=DECAY_BETA)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
-
-        self.mem = self.forward_lif.init_leaky()
 
         self.alpha_filter_first_term = TemporalFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
@@ -147,15 +144,14 @@ class Layer(nn.Module):
             data = data.detach()
             current = self.forward_weights(data)
 
-        spk, mem = self.forward_lif(current, self.mem)
-        self.mem = mem
+        spk = self.forward_lif.forward(current)
 
         logging.debug("")
         logging.debug(f"current: {str(current)}")
-        logging.debug(f"mem: {str(mem)}")
+        logging.debug(f"mem: {str(self.forward_lif.mem())}")
         logging.debug(f"spk: {str(spk)}")
 
-        return spk, mem
+        return spk
 
     # TODO: this will need to be removed or refactored once we move to more complex network topologies
     def __log_equation_context(self, synaptic_weight_equation: SynapticWeightEquation, dw_dt: torch.Tensor,
@@ -165,7 +161,7 @@ class Layer(nn.Module):
         logging.debug(
             f"prev layer most recent spike: {synaptic_weight_equation.first_term.prev_layer_most_recent_spike}")
         logging.debug(
-            f"zenke beta * abs: {ZENKE_BETA * abs(self.mem - THETA_REST)}")
+            f"zenke beta * abs: {ZENKE_BETA * abs(mem - THETA_REST)}")
         logging.debug(
             f"f prime u i: {synaptic_weight_equation.first_term.f_prime_u_i}")
         logging.debug(
@@ -262,13 +258,13 @@ class Layer(nn.Module):
         """
         with torch.no_grad():
             if data is not None:
-                spk, mem = self.forward(data)
+                spk = self.forward(data)
             else:
-                spk, mem = self.forward()
+                spk = self.forward()
 
             # first term
             f_prime_u_i = ZENKE_BETA * \
-                (1 + ZENKE_BETA * abs(self.mem - THETA_REST)) ** (-2)
+                (1 + ZENKE_BETA * abs(self.forward_lif.mem() - THETA_REST)) ** (-2)
             f_prime_u_i = f_prime_u_i.unsqueeze(2)
             prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
                 0] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
@@ -341,7 +337,7 @@ class Layer(nn.Module):
 
             self.forward_counter += 1
 
-            self.__log_equation_context(synaptic_weight_equation, dw_dt, spk, mem, data)
+            self.__log_equation_context(synaptic_weight_equation, dw_dt, spk, self.forward_lif.mem(), data)
 
             # TODO: remove this when learning rule is stable
             input()
