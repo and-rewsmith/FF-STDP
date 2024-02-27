@@ -135,7 +135,7 @@ class Layer(nn.Module):
     def set_prev_layer(self, prev_layer: Self) -> None:
         self.prev_layer = prev_layer
 
-    def forward(self, data: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
         if data is None:
             assert self.prev_layer is not None
             current = self.forward_weights(

@@ -26,16 +26,18 @@ class MovingAverageLIF():
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
         self.neuron_layer = LIF(beta)
 
-    def forward(self, current: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, current: torch.Tensor) -> torch.Tensor:
         spike = self.neuron_layer.forward(current)
-        mem = self.neuron_layer.mem
 
         mean_spike = self.spike_moving_average.apply(spike)
         self.variance_moving_average.apply(spike, mean_spike)
 
-        return (spike, mem)
+        return (spike)
 
     def mem(self) -> torch.Tensor:
+        if self.neuron_layer.mem is None:
+            raise ValueError("No data has been received yet")
+
         return self.neuron_layer.mem
 
     def tracked_spike_moving_average(self) -> torch.Tensor:
