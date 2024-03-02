@@ -7,8 +7,8 @@ import torch.nn as nn
 class LIF(nn.Module):
     def __init__(self, beta: float, threshold: float = 1.0):
         """
-        Note: Initialization of mem at initial forward pass will cause
-        transience in execution
+        NOTE: Initialization of mem to zeros at initial forward pass will cause
+        transient behavior
         """
         super(LIF, self).__init__()
         # Initialize decay rate beta and threshold
@@ -34,10 +34,3 @@ class LIF(nn.Module):
             spk = torch.zeros_like(input)
             spk[input > 0] = 1.0
             return spk
-
-
-if __name__ == "__main__":
-    model = LIF(beta=0.9, threshold=1.0)
-    for i in range(3):
-        input = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        spk = model(input)

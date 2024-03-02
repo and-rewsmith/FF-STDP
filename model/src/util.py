@@ -2,7 +2,6 @@ import math
 from collections import deque
 from typing import Any, Deque, Optional, Tuple
 
-import snntorch as snn
 import torch
 
 from model.src.lif import LIF

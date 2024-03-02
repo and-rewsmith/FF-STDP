@@ -1,11 +1,10 @@
 import logging
-from typing import Deque, List, Optional, Self
+from typing import Optional, Self
 
 from torch import nn
 from torch.utils.data import DataLoader
 import torch
 import pandas as pd
-import snntorch as snn
 from snntorch import spikegen
 import wandb
 
