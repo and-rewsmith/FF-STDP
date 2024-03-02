@@ -2,8 +2,9 @@ import math
 from collections import deque
 from typing import Any, Deque, Optional, Tuple
 
-import snntorch as snn
 import torch
+
+from model.src.lif import LIF
 
 
 # Zenke's paper uses a tau_mean of 600s
@@ -18,24 +19,27 @@ DT = .1
 MAX_RETAINED_SPIKES = int(20 / DT)
 
 
-class MovingAverageLIF(snn.Leaky):
-    def __init__(self, *args: Any, batch_size: int, layer_size: int, tau_mean: float = TAU_MEAN,
-                 tau_var: float = TAU_VAR, **kwargs: Any) -> None:
-        super(MovingAverageLIF, self).__init__(*args, **kwargs)
+class MovingAverageLIF():
+    def __init__(self, batch_size: int, layer_size: int, beta: float, tau_mean: float = TAU_MEAN,
+                 tau_var: float = TAU_VAR) -> None:
         self.spike_moving_average = SpikeMovingAverage(
             tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size)
         self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
+        self.neuron_layer = LIF(beta)
 
-    def forward(self, current: torch.Tensor, mem: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        forward_output = super(
-            MovingAverageLIF, self).forward(current, mem)
-        spike = forward_output[0]
-        mem = forward_output[1]
+    def forward(self, current: torch.Tensor) -> torch.Tensor:
+        spike = self.neuron_layer.forward(current)
 
         mean_spike = self.spike_moving_average.apply(spike)
         self.variance_moving_average.apply(spike, mean_spike)
 
-        return (spike, mem)
+        return (spike)
+
+    def mem(self) -> torch.Tensor:
+        if self.neuron_layer.mem is None:
+            raise ValueError("No data has been received yet")
+
+        return self.neuron_layer.mem
 
     def tracked_spike_moving_average(self) -> torch.Tensor:
         return self.spike_moving_average.tracked_value()
