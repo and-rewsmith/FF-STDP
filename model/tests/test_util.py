@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from model.src.util import SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
+from model.src.util import InhibitoryPlasticityTrace, SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
 
 
 def test_temporal_filter() -> None:
@@ -63,3 +63,16 @@ def test_variance_moving_average() -> None:
     variance_before = vma.tracked_value().item()
     assert vma.apply(
         spike=spike_3, spike_moving_average=sma_value, dt=1).item() > variance_before
+
+
+def test_inhibitory_plasticity_trace() -> None:
+    ipt = InhibitoryPlasticityTrace()
+
+    # Apply a single spike
+    assert ipt.apply(spike=torch.Tensor([1]), dt=1).item() == 1.0
+
+    # Apply another spike, the trace should increase above 2
+    assert ipt.apply(spike=torch.Tensor([2]), dt=1).item() > 2.0
+
+    # After much time with no spikes, the trace should decay
+    assert ipt.apply(spike=torch.Tensor([0]), dt=20).item() < 2.0
