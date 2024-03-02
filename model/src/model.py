@@ -62,16 +62,9 @@ class SynapticWeightEquation:
             self.deviation_scale = deviation_scale
             self.deviation = deviation
 
-    class ThirdTerm:
-        def __init__(self, prev_layer_most_recent_spike: torch.Tensor,
-                     third_term: torch.Tensor) -> None:
-            self.prev_layer_most_recent_spike = prev_layer_most_recent_spike
-            self.third_term = third_term
-
-    def __init__(self, first_term: FirstTerm, second_term: SecondTerm, third_term: ThirdTerm) -> None:
+    def __init__(self, first_term: FirstTerm, second_term: SecondTerm) -> None:
         self.first_term = first_term
         self.second_term = second_term
-        self.third_term = third_term
 
 
 class Settings:
@@ -186,8 +179,6 @@ class Layer(nn.Module):
             f"first term alpha: {synaptic_weight_equation.first_term.alpha_filter}")
         logging.debug(
             f"second term alpha: {synaptic_weight_equation.second_term.alpha_filter}")
-        logging.debug(
-            f"third term: {synaptic_weight_equation.third_term.third_term}")
         logging.debug("")
         if data is not None:
             logging.debug(f"data shape: {data.shape}")
@@ -219,15 +210,9 @@ class Layer(nn.Module):
             {"second_term_no_filter": synaptic_weight_equation.second_term.no_filter[0][0]}, step=self.forward_counter)
 
         wandb.log(
-            {"third_term_prev_layer_spike": synaptic_weight_equation.third_term.prev_layer_most_recent_spike[0][0]},
-            step=self.forward_counter)
-
-        wandb.log(
             {"first_term": synaptic_weight_equation.first_term.alpha_filter[0][0][0]}, step=self.forward_counter)
         wandb.log({"second_term": synaptic_weight_equation.second_term.alpha_filter[0][0][0]},
                   step=self.forward_counter)
-        wandb.log(
-            {"third_term": synaptic_weight_equation.third_term.third_term[0][0][0]}, step=self.forward_counter)
         wandb.log(
             {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
 
@@ -291,22 +276,15 @@ class Layer(nn.Module):
                 current_layer_spike_moving_average
             second_term_no_filter = -1 * \
                 (second_term_prediction_error) + second_term_deviation_scale * \
-                second_term_deviation
+                second_term_deviation + DELTA
             second_term_alpha = self.alpha_filter_second_term.apply(
                 second_term_no_filter)
             second_term_alpha = second_term_alpha.unsqueeze(
                 2).expand(-1, -1, self.layer_settings.data_size)
 
-            # third term
-            prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
-                0] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
-            third_term = DELTA * prev_layer_most_recent_spike
-            third_term = third_term.unsqueeze(
-                1).expand(-1, self.layer_settings.size, -1)
-
             # update weights
             dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
-                                                         second_term_alpha + third_term)
+                                                         second_term_alpha)
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
@@ -324,14 +302,9 @@ class Layer(nn.Module):
                 deviation_scale=second_term_deviation_scale,
                 deviation=second_term_deviation
             )
-            third_term = SynapticWeightEquation.ThirdTerm(
-                prev_layer_most_recent_spike=prev_layer_most_recent_spike,
-                third_term=third_term
-            )
             synaptic_weight_equation = SynapticWeightEquation(
                 first_term=first_term,
                 second_term=second_term,
-                third_term=third_term
             )
 
             self.forward_counter += 1
