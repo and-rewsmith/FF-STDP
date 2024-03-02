@@ -9,6 +9,9 @@ class LIF(nn.Module):
         """
         NOTE: Initialization of mem to zeros at initial forward pass will cause
         transient behavior
+
+        NOTE: The membrane potential is not resting at a negative value, as it
+        is in Zenke's work. This implementation may need to change.
         """
         super(LIF, self).__init__()
         # Initialize decay rate beta and threshold
