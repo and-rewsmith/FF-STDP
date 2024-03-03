@@ -1,11 +1,11 @@
 import pytest
 import torch
 
-from model.src.util import InhibitoryPlasticityTrace, SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
+from model.src.util import InhibitoryPlasticityTrace, SpikeMovingAverage, DoubleExponentialFilter, VarianceMovingAverage
 
 
 def test_temporal_filter() -> None:
-    tf = TemporalFilter(tau_rise=1, tau_fall=1)
+    tf = DoubleExponentialFilter(tau_rise=1, tau_fall=1)
 
     # Initial apply since temporal filter is second order
     tf.apply(value=torch.Tensor([1]), dt=1)

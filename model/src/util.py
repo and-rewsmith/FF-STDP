@@ -48,7 +48,7 @@ class MovingAverageLIF():
         return self.variance_moving_average.tracked_value()
 
 
-class TemporalFilter:
+class DoubleExponentialFilter:
 
     def __init__(self, tau_rise: float, tau_fall: float) -> None:
         """
@@ -96,7 +96,8 @@ class TemporalFilter:
             self.fall = torch.zeros_like(value)
 
         # Apply the exponential decay to the rise state and add the error
-        self.rise = self.rise * math.exp(-dt / self.tau_rise) + value
+        # NOTE: This was corrected in the erratum. Value scaled by `tau_rise`.
+        self.rise = self.rise * math.exp(-dt / self.tau_rise) + self.tau_rise * value
 
         # Apply the exponential decay to the fall state and add the rise state
         self.fall = self.fall * math.exp(-dt / self.tau_fall) + self.rise
@@ -135,7 +136,8 @@ class SpikeMovingAverage:
             self.mean = torch.zeros_like(spike)
 
         # Apply the exponential decay to the mean state and add the new spike value
-        self.mean += (dt / self.tau_mean) * (spike - self.mean)
+        self.mean = self.mean * math.exp(-dt / self.tau_mean) + spike
+
         return self.mean
 
     def tracked_value(self) -> torch.Tensor:
@@ -170,8 +172,8 @@ class VarianceMovingAverage:
             self.variance = torch.zeros_like(spike)
 
         # Apply the exponential decay to the variance state and add the squared deviation
-        self.variance += (dt / self.tau_var) * \
-            ((spike - spike_moving_average) ** 2 - self.variance)
+        self.variance = self.variance * math.exp(-dt / self.tau_var) + \
+            (spike - spike_moving_average) ** 2
 
         return self.variance
 
@@ -196,10 +198,10 @@ class InhibitoryPlasticityTrace:
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.trace is None:
-            # Initialize variance based on the first spike received
+            # Initialize trace based on the first spike received
             self.trace = torch.zeros_like(spike)
 
-        self.trace += (-1) * (dt / self.tau_stdp) * self.trace + spike
+        self.trace = self.trace * math.exp(-dt / self.tau_stdp) + self.tau_stdp * spike
 
         return self.trace
 

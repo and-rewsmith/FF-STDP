@@ -11,22 +11,22 @@ import wandb
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.datagen import generate_sequential_dataset
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, SpikeMovingAverage, TemporalFilter, VarianceMovingAverage
+from model.src.util import MovingAverageLIF, SpikeMovingAverage, DoubleExponentialFilter, VarianceMovingAverage
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
 
-# Zenke's paper uses a lambda of 1
-LAMBDA_HEBBIAN = 1
+# Zenke's paper uses a lambda of 1e-4 (fixed in erratum)
+LAMBDA_HEBBIAN = 1e-4
 
 # Zenke's paper uses a beta of -1mV
 ZENKE_BETA = 1
 
-# Zenke's paper uses a xi of 1e-3
-XI = 1e-3
+# Zenke's paper uses a xi of 1e-7 (fixed in erratum)
+XI = 1e-7
 
-# Zenke's paper uses a delta of 1e-5
-DELTA = 1e-5
+# Zenke's paper uses a delta of 1e-3 (fixed in erratum)
+DELTA = 1e-3
 
 # Zenke's paper uses tau_rise and tau_fall of these values in units of ms
 TAU_RISE_ALPHA = 2
@@ -112,11 +112,11 @@ class Layer(nn.Module):
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.alpha_filter_first_term = TemporalFilter(
+        self.alpha_filter_first_term = DoubleExponentialFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
-        self.epsilon_filter_first_term = TemporalFilter(
+        self.epsilon_filter_first_term = DoubleExponentialFilter(
             tau_rise=TAU_RISE_EPSILON, tau_fall=TAU_FALL_EPSILON)
-        self.alpha_filter_second_term = TemporalFilter(
+        self.alpha_filter_second_term = DoubleExponentialFilter(
             tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
 
         self.forward_counter = 0
