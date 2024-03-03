@@ -96,12 +96,12 @@ class DoubleExponentialFilter:
             self.fall = torch.zeros_like(value)
 
         # Apply the exponential decay to the rise state and add the error
-        # NOTE: This was corrected in the erratum. Value scaled by `tau_rise`.
-        decay_factor = math.exp(-dt / self.tau_rise)
-        self.rise = self.rise * decay_factor + (1 - decay_factor) * self.tau_rise * value
+        decay_factor_rise = math.exp(-dt / self.tau_rise)
+        self.rise = self.rise * decay_factor_rise + value
 
         # Apply the exponential decay to the fall state and add the rise state
-        self.fall = self.fall * math.exp(-dt / self.tau_fall) + self.rise
+        decay_factor_fall = math.exp(-dt / self.tau_fall)
+        self.fall = self.fall * decay_factor_fall + (1 - decay_factor_fall) * self.rise
 
         return self.fall
 
@@ -205,7 +205,7 @@ class InhibitoryPlasticityTrace:
             self.trace = torch.zeros_like(spike)
 
         decay_factor = math.exp(-dt / self.tau_stdp)
-        self.trace = self.trace * decay_factor + (1 - decay_factor) * self.tau_stdp * spike
+        self.trace = self.trace * decay_factor + spike
 
         return self.trace
 

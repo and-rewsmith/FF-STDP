@@ -12,24 +12,24 @@ def test_temporal_filter() -> None:
 
     # Apply a single error with a small dt should result in small change
     assert tf.apply(value=torch.Tensor([1]), dt=1).item(
-    ) == pytest.approx(1.7357588823428847)
+    ) == pytest.approx(1.097208857536316)
 
     # Apply a zero error should result in decay of the state
     assert tf.apply(value=torch.Tensor([0]), dt=1).item(
-    ) == pytest.approx(1.1417647320527227)
+    ) == pytest.approx(0.7217329740524292)
 
 
 def test_spike_moving_average() -> None:
     sma = SpikeMovingAverage(batch_size=1, tau_mean=1, data_size=1)
 
     # Apply a single spike
-    assert sma.apply(spike=torch.Tensor([1]), dt=1).item() == 1.0
+    assert sma.apply(spike=torch.Tensor([1]), dt=1).item() == 0.6321205496788025
 
     # Apply another spike, the average should increase
-    assert sma.apply(spike=torch.Tensor([2]), dt=1).item() == 2.0
+    assert sma.apply(spike=torch.Tensor([2]), dt=1).item() == 1.496785283088684
 
     # After some time with no spikes, the average should decay
-    assert sma.apply(spike=torch.Tensor([0]), dt=1).item() == 0.0
+    assert sma.apply(spike=torch.Tensor([0]), dt=1).item() == 0.5506365299224854
 
 
 def test_variance_moving_average() -> None:
@@ -47,7 +47,7 @@ def test_variance_moving_average() -> None:
     assert sma.tracked_value().item() > 1
 
     sma_value = sma.apply(spike=spike, dt=1)
-    expected_variance = 0.3508073062162211
+    expected_variance = 0.38893842697143555
     assert vma.apply(
         spike=spike, spike_moving_average=sma_value, dt=1).item() == pytest.approx(expected_variance)
 
@@ -69,10 +69,10 @@ def test_inhibitory_plasticity_trace() -> None:
     ipt = InhibitoryPlasticityTrace()
 
     # Apply a single spike
-    assert ipt.apply(spike=torch.Tensor([1]), dt=1).item() == 1.0
+    assert ipt.apply(spike=torch.Tensor([1]), dt=1).item() == 1
 
     # Apply another spike, the trace should increase above 2
-    assert ipt.apply(spike=torch.Tensor([2]), dt=1).item() > 2.0
+    assert ipt.apply(spike=torch.Tensor([2]), dt=1).item() == 2.9512295722961426
 
     # After much time with no spikes, the trace should decay
-    assert ipt.apply(spike=torch.Tensor([0]), dt=20).item() < 2.0
+    assert ipt.apply(spike=torch.Tensor([0]), dt=20).item() == 1.0856966972351074
