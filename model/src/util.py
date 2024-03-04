@@ -16,6 +16,12 @@ TAU_STDP = 20
 # Zenke's paper uses a .1ms time step
 DT = .1
 
+# Zenke's paper uses tau_rise and tau_fall of these values in units of ms
+TAU_RISE_ALPHA = 2
+TAU_FALL_ALPHA = 10
+TAU_RISE_EPSILON = 5
+TAU_FALL_EPSILON = 20
+
 MAX_RETAINED_SPIKES = int(20 / DT)
 
 
@@ -104,6 +110,14 @@ class DoubleExponentialFilter:
         self.fall = self.fall * decay_factor_fall + (1 - decay_factor_fall) * self.rise
 
         return self.fall
+
+
+class SynapseFilterGroup:
+
+    def __init__(self):
+        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
+        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON)
+        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
 
 
 class SpikeMovingAverage:

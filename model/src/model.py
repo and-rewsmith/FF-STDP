@@ -10,7 +10,7 @@ import wandb
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, DoubleExponentialFilter
+from model.src.util import MovingAverageLIF, DoubleExponentialFilter, SynapseFilterGroup
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
@@ -27,12 +27,6 @@ XI = 1e-7
 # Zenke's paper uses a delta of 1e-3 (fixed in erratum)
 DELTA = 1e-3
 
-# Zenke's paper uses tau_rise and tau_fall of these values in units of ms
-TAU_RISE_ALPHA = 2
-TAU_FALL_ALPHA = 10
-TAU_RISE_EPSILON = 5
-TAU_FALL_EPSILON = 20
-
 MAX_RETAINED_MEMS = 2
 
 DATA_MEM_ASSUMPTION = 0.5
@@ -41,7 +35,7 @@ DECAY_BETA = 0.85
 
 ENCODE_SPIKE_TRAINS = True
 
-PERCENTAGE_INHIBITORY = 0.25
+PERCENTAGE_INHIBITORY = 50
 
 
 def inhibitory_mask_vec(length, percentage_ones) -> torch.Tensor:
@@ -55,12 +49,12 @@ def inhibitory_mask_vec(length, percentage_ones) -> torch.Tensor:
 class ExcitatorySynapticWeightEquation:
     class FirstTerm:
         def __init__(self, alpha_filter: torch.Tensor, epsilon_filter: torch.Tensor, no_filter: torch.Tensor,
-                     f_prime_u_i: torch.Tensor, prev_layer_most_recent_spike: torch.Tensor) -> None:
+                     f_prime_u_i: torch.Tensor, from_layer_most_recent_spike: torch.Tensor) -> None:
             self.alpha_filter = alpha_filter
             self.epsilon_filter = epsilon_filter
             self.no_filter = no_filter
             self.f_prime_u_i = f_prime_u_i
-            self.prev_layer_most_recent_spike = prev_layer_most_recent_spike
+            self.prev_layer_most_recent_spike = from_layer_most_recent_spike
 
     class SecondTerm:
         def __init__(self, alpha_filter: torch.Tensor, no_filter: torch.Tensor, prediction_error: torch.Tensor,
@@ -132,12 +126,9 @@ class Layer(nn.Module):
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.alpha_filter_first_term = DoubleExponentialFilter(
-            tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
-        self.epsilon_filter_first_term = DoubleExponentialFilter(
-            tau_rise=TAU_RISE_EPSILON, tau_fall=TAU_FALL_EPSILON)
-        self.alpha_filter_second_term = DoubleExponentialFilter(
-            tau_rise=TAU_RISE_ALPHA, tau_fall=TAU_FALL_ALPHA)
+        self.forward_filter_group = SynapseFilterGroup()
+        self.recurrent_filter_group = SynapseFilterGroup()
+        self.backward_filter_group = SynapseFilterGroup()
 
         self.forward_counter = 0
 
@@ -148,6 +139,18 @@ class Layer(nn.Module):
         self.prev_layer = prev_layer
 
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # TODOPRE: This needs to change if new neuron model keeps membrane above spike and doesn't record a spike until the next timestep
+        # TODOPRE: add a loud note explaining this coupling sideeffect
+        """
+        Try to understand how this works:
+        - initial current comes in
+        - first layer has membrane potential come in and exceed membrane but doesn't issue spike
+        - second layer's input current from first layer is 0 due to spike delay
+        - second layer doesn't spike yet
+        - next timestep first layer issues spike
+        - second layer's input current from first layer is now non-zero and exceeds threshold
+        - second layer does not issue spike yet
+        """
         if data is None:
             assert self.prev_layer is not None
             current = self.forward_weights(
@@ -234,7 +237,7 @@ class Layer(nn.Module):
         wandb.log(
             {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
 
-    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
+    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, filter_group: SynapseFilterGroup, from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
         """
         The LPL learning rule is implemented here. It is defined as dw_ji/dt,
         for which we optimize the computation with matrices.
@@ -252,25 +255,48 @@ class Layer(nn.Module):
         The final dw_ij/dt is formed by a Hadamard product of the first term and
         the second term. This is then summed across the batch dimension and
         divided by the batch size to form the final dw_ij/dt matrix. We then
-        apply this to the weights.
+        mask this to filter out the inhibitory weights and apply this to the
+        excitatory weights.
 
         TODOPRE: need to add to desc
+        TODOPRE: need to add mask
         """
+
+        from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
+
+        if from_layer is None:
+            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size)
+        else:
+            # flip the mask as this is for excitatory connections
+            mask = (~from_layer.inhibitory_mask_vec.bool()).int()
+            # expand the mask across the synaptic weight matrix
+            mask = mask.unsqueeze(0).expand(self.layer_settings.size, -1)
+            assert mask.shape == (self.layer_settings.size, from_layer_size)
+
         with torch.no_grad():
             # first term
             f_prime_u_i = ZENKE_BETA * \
                 (1 + ZENKE_BETA * abs(self.lif.mem() - THETA_REST)) ** (-2)
             f_prime_u_i = f_prime_u_i.unsqueeze(2)
-            prev_layer_most_recent_spike: torch.Tensor = from_layer.lif.spike_moving_average.spike_rec[
+            from_layer_most_recent_spike: torch.Tensor = from_layer.lif.spike_moving_average.spike_rec[
                 0] if from_layer is not None else data  # type: ignore [union-attr, assignment]
-            prev_layer_most_recent_spike = prev_layer_most_recent_spike.unsqueeze(
+            from_layer_most_recent_spike = from_layer_most_recent_spike.unsqueeze(
                 1)
-            first_term_no_filter = prev_layer_most_recent_spike * f_prime_u_i
-
-            first_term_epsilon = self.epsilon_filter_first_term.apply(
+            first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
+            first_term_epsilon = filter_group.first_term_epsilon.apply(
                 first_term_no_filter)
-            first_term_alpha = self.alpha_filter_first_term.apply(
+            first_term_alpha = filter_group.first_term_alpha.apply(
                 first_term_epsilon)
+
+            # assert shapes
+            assert f_prime_u_i.shape == (self.layer_settings.batch_size, self.layer_settings.size, 1)
+            assert from_layer_most_recent_spike.shape == (self.layer_settings.batch_size, 1, from_layer_size)
+            assert first_term_no_filter.shape == (self.layer_settings.batch_size,
+                                                  self.layer_settings.size, from_layer_size)
+            assert first_term_epsilon.shape == (self.layer_settings.batch_size,
+                                                self.layer_settings.size, from_layer_size)
+            assert first_term_alpha.shape == (self.layer_settings.batch_size,
+                                              self.layer_settings.size, from_layer_size)
 
             # second term
             current_layer_most_recent_spike = self.lif.spike_moving_average.spike_rec[
@@ -288,50 +314,59 @@ class Layer(nn.Module):
             second_term_no_filter = -1 * \
                 (second_term_prediction_error) + second_term_deviation_scale * \
                 second_term_deviation + DELTA
-            second_term_alpha = self.alpha_filter_second_term.apply(
+            # this can potentially be done after the filter
+            second_term_no_filter = second_term_no_filter.unsqueeze(2).expand(-1, -1, from_layer_size)
+            second_term_alpha = filter_group.second_term_alpha.apply(
                 second_term_no_filter)
-            second_term_alpha = second_term_alpha.unsqueeze(
-                2).expand(-1, -1, self.layer_settings.data_size)
+
+            # assert shapes
+            assert second_term_deviation.shape == (self.layer_settings.batch_size, self.layer_settings.size)
+            assert second_term_no_filter.shape == (self.layer_settings.batch_size,
+                                                   self.layer_settings.size, from_layer_size)
+            assert second_term_alpha.shape == (self.layer_settings.batch_size,
+                                               self.layer_settings.size, from_layer_size)
 
             # update weights
             dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
                                                          second_term_alpha)
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
-            self.forward_weights.weight += dw_dt
+            self.forward_weights.weight += dw_dt * mask
 
-            first_term = ExcitatorySynapticWeightEquation.FirstTerm(
-                alpha_filter=first_term_alpha,
-                epsilon_filter=first_term_epsilon,
-                no_filter=first_term_no_filter,
-                f_prime_u_i=f_prime_u_i,
-                prev_layer_most_recent_spike=prev_layer_most_recent_spike
-            )
-            second_term = ExcitatorySynapticWeightEquation.SecondTerm(
-                alpha_filter=second_term_alpha,
-                no_filter=second_term_no_filter,
-                prediction_error=second_term_prediction_error,
-                deviation_scale=second_term_deviation_scale,
-                deviation=second_term_deviation
-            )
-            synaptic_weight_equation = ExcitatorySynapticWeightEquation(
-                first_term=first_term,
-                second_term=second_term,
-            )
+            # only log for first layer
+            if self.prev_layer is None:
+                first_term = ExcitatorySynapticWeightEquation.FirstTerm(
+                    alpha_filter=first_term_alpha,
+                    epsilon_filter=first_term_epsilon,
+                    no_filter=first_term_no_filter,
+                    f_prime_u_i=f_prime_u_i,
+                    from_layer_most_recent_spike=from_layer_most_recent_spike
+                )
+                second_term = ExcitatorySynapticWeightEquation.SecondTerm(
+                    alpha_filter=second_term_alpha,
+                    no_filter=second_term_no_filter,
+                    prediction_error=second_term_prediction_error,
+                    deviation_scale=second_term_deviation_scale,
+                    deviation=second_term_deviation
+                )
+                synaptic_weight_equation = ExcitatorySynapticWeightEquation(
+                    first_term=first_term,
+                    second_term=second_term,
+                )
 
-            self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
+                self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
             # TODO: remove this when learning rule is stable
             input()
 
     def train_forward_excitatory(self, spike: torch.Tensor, data: Optional[torch.Tensor]) -> None:
         # recurrent connections always trained
-        self.train_forward_excitatory_from_layer(spike, self, data)
+        self.train_forward_excitatory_from_layer(spike, self.recurrent_filter_group, self, data)
 
-        if self.next_layer is not None:
-            self.train_forward_excitatory_from_layer(spike, self.next_layer, data)
+        # if self.next_layer is not None:
+        #     self.train_forward_excitatory_from_layer(spike, self.backward_filter_group, self.next_layer, data)
 
         # if prev layer is None then forward connections driven by data
-        self.train_forward_excitatory_from_layer(spike, self.prev_layer, data)
+        self.train_forward_excitatory_from_layer(spike, self.forward_filter_group, self.prev_layer, data)
 
 
 class Net(nn.Module):
@@ -381,14 +416,14 @@ class Net(nn.Module):
                 for timestep in range(batch.shape[0]):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
-                            spk = self.forward(batch[timestep])
+                            spk = layer.forward(batch[timestep])
                             data = batch[timestep]
                         else:
-                            spk = self.forward()
+                            spk = layer.forward()
                             data = None
 
                         layer.train_forward_excitatory(spk, data)
-                        layer.train_forward_inhibitory(spk, data)
+                        # layer.train_forward_inhibitory(spk, data)
 
 
 def set_logging() -> None:
@@ -411,7 +446,7 @@ if __name__ == "__main__":
         layer_sizes=[1],
         num_steps=25,
         data_size=2,
-        batch_size=1,
+        batch_size=3,
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS
