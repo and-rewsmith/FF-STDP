@@ -9,9 +9,8 @@ from snntorch import spikegen
 import wandb
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
-from datasets.src.zenke_2a.datagen import generate_sequential_dataset
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, SpikeMovingAverage, DoubleExponentialFilter, VarianceMovingAverage
+from model.src.util import MovingAverageLIF, DoubleExponentialFilter
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
@@ -42,8 +41,18 @@ DECAY_BETA = 0.85
 
 ENCODE_SPIKE_TRAINS = True
 
+PERCENTAGE_INHIBITORY = 0.25
 
-class SynapticWeightEquation:
+
+def inhibitory_mask_vec(length, percentage_ones) -> torch.Tensor:
+    num_ones = int(length * (percentage_ones / 100))
+    vector = torch.zeros(length)
+    indices = torch.randperm(length)[:num_ones]
+    vector[indices] = 1
+    return vector
+
+
+class ExcitatorySynapticWeightEquation:
     class FirstTerm:
         def __init__(self, alpha_filter: torch.Tensor, epsilon_filter: torch.Tensor, no_filter: torch.Tensor,
                      f_prime_u_i: torch.Tensor, prev_layer_most_recent_spike: torch.Tensor) -> None:
@@ -106,8 +115,19 @@ class Layer(nn.Module):
         self.forward_weights = nn.Linear(
             layer_settings.prev_size, layer_settings.size)
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
-        self.forward_lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                            beta=DECAY_BETA)
+
+        # weights from next layer to this layer
+        self.backward_weights = nn.Linear(layer_settings.size, layer_settings.prev_size)
+        torch.nn.init.uniform_(self.backward_weights.weight, a=0.1, b=1.0)
+
+        # weights from this layer to this layer
+        self.recurrent_weights = nn.Linear(layer_settings.size, layer_settings.size)
+        torch.nn.init.uniform_(self.recurrent_weights.weight, a=0.1, b=1.0)
+
+        self.inhibitory_mask_vec = inhibitory_mask_vec(layer_settings.size, PERCENTAGE_INHIBITORY)
+
+        self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
+                                    beta=DECAY_BETA)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
@@ -136,53 +156,51 @@ class Layer(nn.Module):
             data = data.detach()
             current = self.forward_weights(data)
 
-        spk = self.forward_lif.forward(current)
+        spk = self.lif.forward(current)
+        self.forward_counter += 1
 
         logging.debug("")
         logging.debug(f"current: {str(current)}")
-        logging.debug(f"mem: {str(self.forward_lif.mem())}")
+        logging.debug(f"mem: {str(self.lif.mem())}")
         logging.debug(f"spk: {str(spk)}")
 
         return spk
 
     # TODO: this will need to be removed or refactored once we move to more complex network topologies
-    def __log_equation_context(self, synaptic_weight_equation: SynapticWeightEquation, dw_dt: torch.Tensor,
-                               spike: torch.Tensor, mem: torch.Tensor, data: Optional[torch.Tensor] = None) -> None:
+    def __log_equation_context(self, excitatory_equation: ExcitatorySynapticWeightEquation, dw_dt: torch.Tensor,
+                               spike: torch.Tensor, mem: torch.Tensor) -> None:
         logging.debug("")
         logging.debug("first term stats:")
         logging.debug(
-            f"prev layer most recent spike: {synaptic_weight_equation.first_term.prev_layer_most_recent_spike}")
+            f"prev layer most recent spike: {excitatory_equation.first_term.prev_layer_most_recent_spike}")
         logging.debug(
             f"zenke beta * abs: {ZENKE_BETA * abs(mem - THETA_REST)}")
         logging.debug(
-            f"f prime u i: {synaptic_weight_equation.first_term.f_prime_u_i}")
+            f"f prime u i: {excitatory_equation.first_term.f_prime_u_i}")
         logging.debug(
-            f"first term no filter: {synaptic_weight_equation.first_term.no_filter}")
+            f"first term no filter: {excitatory_equation.first_term.no_filter}")
         logging.debug(
-            f"first term epsilon: {synaptic_weight_equation.first_term.epsilon_filter}")
+            f"first term epsilon: {excitatory_equation.first_term.epsilon_filter}")
         logging.debug(
-            f"first term alpha filter: {synaptic_weight_equation.first_term.alpha_filter}")
+            f"first term alpha filter: {excitatory_equation.first_term.alpha_filter}")
         logging.debug("")
         logging.debug("second term stats:")
         logging.debug(
-            f"second_term_prediction_error: {synaptic_weight_equation.second_term.prediction_error}")
+            f"second_term_prediction_error: {excitatory_equation.second_term.prediction_error}")
         logging.debug(
-            f"second_term_deviation_scale: {synaptic_weight_equation.second_term.deviation_scale}")
+            f"second_term_deviation_scale: {excitatory_equation.second_term.deviation_scale}")
         logging.debug(
-            f"second_term_deviation: {synaptic_weight_equation.second_term.deviation}")
+            f"second_term_deviation: {excitatory_equation.second_term.deviation}")
         logging.debug(
-            f"second term no filter: {synaptic_weight_equation.second_term.no_filter}")
+            f"second term no filter: {excitatory_equation.second_term.no_filter}")
         logging.debug(
-            f"second term alpha: {synaptic_weight_equation.second_term.alpha_filter}")
+            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
         logging.debug("")
         logging.debug(
-            f"first term alpha: {synaptic_weight_equation.first_term.alpha_filter}")
+            f"first term alpha: {excitatory_equation.first_term.alpha_filter}")
         logging.debug(
-            f"second term alpha: {synaptic_weight_equation.second_term.alpha_filter}")
+            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
         logging.debug("")
-        if data is not None:
-            logging.debug(f"data shape: {data.shape}")
-        logging.debug(f"data: {data}")
         logging.debug(f"dw_dt shape: {dw_dt.shape}")
         logging.debug(f"dw_dt: {dw_dt}")
         logging.debug(
@@ -193,30 +211,30 @@ class Layer(nn.Module):
         wandb.log({"spike": spike[0][0]}, step=self.forward_counter)
 
         wandb.log(
-            {"first_term_no_filter": synaptic_weight_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
+            {"first_term_no_filter": excitatory_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
         wandb.log(
-            {"first_term_epsilon": synaptic_weight_equation.first_term.epsilon_filter[0][0][0]},
+            {"first_term_epsilon": excitatory_equation.first_term.epsilon_filter[0][0][0]},
             step=self.forward_counter)
 
         wandb.log(
-            {"second_term_prediction_error": synaptic_weight_equation.second_term.prediction_error[0][0]},
+            {"second_term_prediction_error": excitatory_equation.second_term.prediction_error[0][0]},
             step=self.forward_counter)
         wandb.log(
-            {"second_term_deviation_scale": synaptic_weight_equation.second_term.deviation_scale[0][0]},
+            {"second_term_deviation_scale": excitatory_equation.second_term.deviation_scale[0][0]},
             step=self.forward_counter)
         wandb.log(
-            {"second_term_deviation": synaptic_weight_equation.second_term.deviation[0][0]}, step=self.forward_counter)
+            {"second_term_deviation": excitatory_equation.second_term.deviation[0][0]}, step=self.forward_counter)
         wandb.log(
-            {"second_term_no_filter": synaptic_weight_equation.second_term.no_filter[0][0]}, step=self.forward_counter)
+            {"second_term_no_filter": excitatory_equation.second_term.no_filter[0][0]}, step=self.forward_counter)
 
         wandb.log(
-            {"first_term": synaptic_weight_equation.first_term.alpha_filter[0][0][0]}, step=self.forward_counter)
-        wandb.log({"second_term": synaptic_weight_equation.second_term.alpha_filter[0][0][0]},
+            {"first_term": excitatory_equation.first_term.alpha_filter[0][0][0]}, step=self.forward_counter)
+        wandb.log({"second_term": excitatory_equation.second_term.alpha_filter[0][0][0]},
                   step=self.forward_counter)
         wandb.log(
             {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
 
-    def train_forward(self, data: Optional[torch.Tensor] = None) -> None:
+    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
         """
         The LPL learning rule is implemented here. It is defined as dw_ji/dt,
         for which we optimize the computation with matrices.
@@ -231,27 +249,20 @@ class Layer(nn.Module):
             to form a second term matrix of size (batch_size, i, j). This is
             performed by expanding and copying the tensor along the j dimension.
 
-         3. The third term contains S_j. We form a matrix via some unsqueezes to
-            form a third term matrix of size (batch_size, i, j). This is performed
-            by expanding and copying the tensor along the i dimension.
-
         The final dw_ij/dt is formed by a Hadamard product of the first term and
-        the second term, and then adding the third term. This is then summed
-        across the batch dimension and divided by the batch size to form the
-        final dw_ij/dt matrix. We then apply this to the weights.
+        the second term. This is then summed across the batch dimension and
+        divided by the batch size to form the final dw_ij/dt matrix. We then
+        apply this to the weights.
+
+        TODOPRE: need to add to desc
         """
         with torch.no_grad():
-            if data is not None:
-                spk = self.forward(data)
-            else:
-                spk = self.forward()
-
             # first term
             f_prime_u_i = ZENKE_BETA * \
-                (1 + ZENKE_BETA * abs(self.forward_lif.mem() - THETA_REST)) ** (-2)
+                (1 + ZENKE_BETA * abs(self.lif.mem() - THETA_REST)) ** (-2)
             f_prime_u_i = f_prime_u_i.unsqueeze(2)
-            prev_layer_most_recent_spike: torch.Tensor = self.prev_layer.forward_lif.spike_moving_average.spike_rec[
-                0] if self.prev_layer is not None else data  # type: ignore [union-attr, assignment]
+            prev_layer_most_recent_spike: torch.Tensor = from_layer.lif.spike_moving_average.spike_rec[
+                0] if from_layer is not None else data  # type: ignore [union-attr, assignment]
             prev_layer_most_recent_spike = prev_layer_most_recent_spike.unsqueeze(
                 1)
             first_term_no_filter = prev_layer_most_recent_spike * f_prime_u_i
@@ -262,11 +273,11 @@ class Layer(nn.Module):
                 first_term_epsilon)
 
             # second term
-            current_layer_most_recent_spike = self.forward_lif.spike_moving_average.spike_rec[
+            current_layer_most_recent_spike = self.lif.spike_moving_average.spike_rec[
                 0]
-            current_layer_delta_t_spikes_ago = self.forward_lif.spike_moving_average.spike_rec[-1]
-            current_layer_spike_moving_average = self.forward_lif.spike_moving_average.tracked_value()
-            current_layer_variance_moving_average = self.forward_lif.variance_moving_average.tracked_value()
+            current_layer_delta_t_spikes_ago = self.lif.spike_moving_average.spike_rec[-1]
+            current_layer_spike_moving_average = self.lif.spike_moving_average.tracked_value()
+            current_layer_variance_moving_average = self.lif.variance_moving_average.tracked_value()
 
             second_term_prediction_error = current_layer_most_recent_spike - \
                 current_layer_delta_t_spikes_ago
@@ -288,31 +299,39 @@ class Layer(nn.Module):
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt
 
-            first_term = SynapticWeightEquation.FirstTerm(
+            first_term = ExcitatorySynapticWeightEquation.FirstTerm(
                 alpha_filter=first_term_alpha,
                 epsilon_filter=first_term_epsilon,
                 no_filter=first_term_no_filter,
                 f_prime_u_i=f_prime_u_i,
                 prev_layer_most_recent_spike=prev_layer_most_recent_spike
             )
-            second_term = SynapticWeightEquation.SecondTerm(
+            second_term = ExcitatorySynapticWeightEquation.SecondTerm(
                 alpha_filter=second_term_alpha,
                 no_filter=second_term_no_filter,
                 prediction_error=second_term_prediction_error,
                 deviation_scale=second_term_deviation_scale,
                 deviation=second_term_deviation
             )
-            synaptic_weight_equation = SynapticWeightEquation(
+            synaptic_weight_equation = ExcitatorySynapticWeightEquation(
                 first_term=first_term,
                 second_term=second_term,
             )
 
-            self.forward_counter += 1
-
-            self.__log_equation_context(synaptic_weight_equation, dw_dt, spk, self.forward_lif.mem(), data)
+            self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
             # TODO: remove this when learning rule is stable
             input()
+
+    def train_forward_excitatory(self, spike: torch.Tensor, data: Optional[torch.Tensor]) -> None:
+        # recurrent connections always trained
+        self.train_forward_excitatory_from_layer(spike, self, data)
+
+        if self.next_layer is not None:
+            self.train_forward_excitatory_from_layer(spike, self.next_layer, data)
+
+        # if prev layer is None then forward connections driven by data
+        self.train_forward_excitatory_from_layer(spike, self.prev_layer, data)
 
 
 class Net(nn.Module):
@@ -362,9 +381,14 @@ class Net(nn.Module):
                 for timestep in range(batch.shape[0]):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
-                            layer.train_forward(batch[timestep])
+                            spk = self.forward(batch[timestep])
+                            data = batch[timestep]
                         else:
-                            layer.train_forward(None)
+                            spk = self.forward()
+                            data = None
+
+                        layer.train_forward_excitatory(spk, data)
+                        layer.train_forward_inhibitory(spk, data)
 
 
 def set_logging() -> None:
