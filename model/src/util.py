@@ -48,7 +48,7 @@ class MovingAverageLIF():
         return self.variance_moving_average.tracked_value()
 
 
-class TemporalFilter:
+class DoubleExponentialFilter:
 
     def __init__(self, tau_rise: float, tau_fall: float) -> None:
         """
@@ -96,10 +96,12 @@ class TemporalFilter:
             self.fall = torch.zeros_like(value)
 
         # Apply the exponential decay to the rise state and add the error
-        self.rise = self.rise * math.exp(-dt / self.tau_rise) + value
+        decay_factor_rise = math.exp(-dt / self.tau_rise)
+        self.rise = self.rise * decay_factor_rise + value
 
         # Apply the exponential decay to the fall state and add the rise state
-        self.fall = self.fall * math.exp(-dt / self.tau_fall) + self.rise
+        decay_factor_fall = math.exp(-dt / self.tau_fall)
+        self.fall = self.fall * decay_factor_fall + (1 - decay_factor_fall) * self.rise
 
         return self.fall
 
@@ -135,7 +137,9 @@ class SpikeMovingAverage:
             self.mean = torch.zeros_like(spike)
 
         # Apply the exponential decay to the mean state and add the new spike value
-        self.mean += (dt / self.tau_mean) * (spike - self.mean)
+        decay_factor = math.exp(-dt / self.tau_mean)
+        self.mean = self.mean * decay_factor + (1 - decay_factor) * spike
+
         return self.mean
 
     def tracked_value(self) -> torch.Tensor:
@@ -170,8 +174,9 @@ class VarianceMovingAverage:
             self.variance = torch.zeros_like(spike)
 
         # Apply the exponential decay to the variance state and add the squared deviation
-        self.variance += (dt / self.tau_var) * \
-            ((spike - spike_moving_average) ** 2 - self.variance)
+        decay_factor = math.exp(-dt / self.tau_var)
+        self.variance = self.variance * decay_factor + \
+            (1 - decay_factor) * (spike - spike_moving_average) ** 2
 
         return self.variance
 
@@ -196,10 +201,11 @@ class InhibitoryPlasticityTrace:
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.trace is None:
-            # Initialize variance based on the first spike received
+            # Initialize trace based on the first spike received
             self.trace = torch.zeros_like(spike)
 
-        self.trace += (-1) * (dt / self.tau_stdp) * self.trace + spike
+        decay_factor = math.exp(-dt / self.tau_stdp)
+        self.trace = self.trace * decay_factor + spike
 
         return self.trace
 
