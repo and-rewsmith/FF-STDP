@@ -42,10 +42,10 @@ class MovingAverageLIF():
         return (spike)
 
     def mem(self) -> torch.Tensor:
-        if self.neuron_layer.mem is None:
+        if self.neuron_layer.prereset_mem is None:
             raise ValueError("No data has been received yet")
 
-        return self.neuron_layer.mem
+        return self.neuron_layer.prereset_mem
 
     def tracked_spike_moving_average(self) -> torch.Tensor:
         return self.spike_moving_average.tracked_value()

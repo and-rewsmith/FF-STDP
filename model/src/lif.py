@@ -19,14 +19,24 @@ class LIF(nn.Module):
         self.threshold = threshold
         self.spike_op = self.SpikeOperator.apply
         self.mem: Optional[torch.Tensor] = None
+        self.prereset_mem: Optional[torch.Tensor] = None
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         if self.mem == None:  # noqa
             self.mem = torch.zeros_like(current)
+            self.prereset_mem = torch.zeros_like(current)
 
+        # Update membrane potential: decay and add current
+        self.mem = self.beta * self.mem + current
+        self.prereset_mem = self.mem.clone()
+
+        # Spike if membrane potential exceeds threshold
         spk: torch.Tensor = self.spike_op(self.mem, self.threshold)
+
+        # Reset the membrane potential if spiked
         reset = spk * self.threshold
-        self.mem = self.beta * self.mem + current - reset  # type: ignore [operator]
+        self.mem -= reset  # type: ignore [operator]
+
         return spk
 
     class SpikeOperator(torch.autograd.Function):
