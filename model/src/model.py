@@ -38,7 +38,7 @@ ENCODE_SPIKE_TRAINS = True
 PERCENTAGE_INHIBITORY = 50
 
 
-def inhibitory_mask_vec(length, percentage_ones) -> torch.Tensor:
+def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
     num_ones = int(length * (percentage_ones / 100))
     vector = torch.zeros(length)
     indices = torch.randperm(length)[:num_ones]
@@ -149,7 +149,9 @@ class Layer(nn.Module):
         if data is not None:
             forward_current = self.forward_weights(data)
         else:
-            forward_current = self.forward_weights(self.prev_layer.lif.spike_moving_average.spike_rec[-1].detach())
+            assert self.prev_layer is not None
+            forward_current = self.forward_weights(
+                self.prev_layer.lif.spike_moving_average.spike_rec[-1].detach())
 
         # if self.next_layer is not None:
         #     backward_current = self.backward_weights(self.next_layer.lif.spike_moving_average.spike_rec[-1].detach())
@@ -243,7 +245,8 @@ class Layer(nn.Module):
         wandb.log(
             {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
 
-    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, filter_group: SynapseFilterGroup, from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
+    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, filter_group: SynapseFilterGroup,
+                                            from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
         """
         The LPL excitatory learning rule is implemented here. It is defined as dw_ji/dt,
         for which we optimize the computation with matrices.
