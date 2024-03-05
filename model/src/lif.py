@@ -12,6 +12,17 @@ class LIF(nn.Module):
 
         NOTE: The membrane potential is not resting at a negative value, as it
         is in Zenke's work. This implementation may need to change.
+
+        NOTE: The ordering of the following operations within a timestep is
+        important. So we need to pick the correct ordering. The current
+        implementation follows Zenke's work, HOWEVER, the membrane potential
+        used in the learning rule is separate from this implementation, and may
+        either use the `mem` or `prereset_mem`.
+
+        Order of operations:
+        1. Update membrane potential
+        2. Spike if membrane potential exceeds threshold
+        3. Reset the membrane potential if spiked
         """
         super(LIF, self).__init__()
         # Initialize decay rate beta and threshold
