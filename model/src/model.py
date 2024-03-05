@@ -138,27 +138,33 @@ class Layer(nn.Module):
     def set_prev_layer(self, prev_layer: Self) -> None:
         self.prev_layer = prev_layer
 
+    # TODO: uncomment backwards connections when we move to more complex network topologies
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # TODOPRE: This needs to change if new neuron model keeps membrane above spike and doesn't record a spike until the next timestep
-        # TODOPRE: add a loud note explaining this coupling sideeffect
-        """
-        Try to understand how this works:
-        - initial current comes in
-        - first layer has membrane potential come in and exceed membrane but doesn't issue spike
-        - second layer's input current from first layer is 0 due to spike delay
-        - second layer doesn't spike yet
-        - next timestep first layer issues spike
-        - second layer's input current from first layer is now non-zero and exceeds threshold
-        - second layer does not issue spike yet
-        """
-        if data is None:
-            assert self.prev_layer is not None
-            current = self.forward_weights(
-                self.prev_layer.spk_rec[-1].detach())
-        else:
-            data = data.detach()
-            current = self.forward_weights(data)
+        # current components
+        recurrent_current = self.recurrent_weights(self.lif.spike_moving_average.spike_rec[-1])
+        forward_current = None
+        # backward_current = None
 
+        # initialize forward and backward currents
+        if data is not None:
+            forward_current = self.forward_weights(data)
+        else:
+            forward_current = self.forward_weights(self.prev_layer.lif.spike_moving_average.spike_rec[-1].detach())
+
+        # if self.next_layer is not None:
+        #     backward_current = self.backward_weights(self.next_layer.lif.spike_moving_average.spike_rec[-1].detach())
+
+        # sum currents
+        current = recurrent_current
+        if forward_current is not None:
+            current += forward_current
+        else:
+            raise ValueError("forward_current is None")
+
+        # if backward_current is not None:
+        #     current += backward_current
+
+        # forward pass
         spk = self.lif.forward(current)
         self.forward_counter += 1
 
@@ -329,8 +335,9 @@ class Layer(nn.Module):
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
             self.forward_weights.weight += dw_dt * mask
 
-            # only log for first layer
-            if self.prev_layer is None:
+            # only log for first layer and forward connections
+            # TODO: remove or refactor when learning rule is stable
+            if self.prev_layer is None and filter_group is self.forward_filter_group:
                 first_term = ExcitatorySynapticWeightEquation.FirstTerm(
                     alpha_filter=first_term_alpha,
                     epsilon_filter=first_term_epsilon,
@@ -352,9 +359,7 @@ class Layer(nn.Module):
 
                 self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
-            # TODO: remove this when learning rule is stable
-            input()
-
+    # TODO: uncomment when we move to more complex network topologies
     def train_forward_excitatory(self, spike: torch.Tensor, data: Optional[torch.Tensor]) -> None:
         # recurrent connections always trained
         self.train_forward_excitatory_from_layer(spike, self.recurrent_filter_group, self, data)
@@ -364,6 +369,9 @@ class Layer(nn.Module):
 
         # if prev layer is None then forward connections driven by data
         self.train_forward_excitatory_from_layer(spike, self.forward_filter_group, self.prev_layer, data)
+
+        # TODO: remove this when learning rule is stable
+        input()
 
 
 class Net(nn.Module):
@@ -443,7 +451,7 @@ if __name__ == "__main__":
         layer_sizes=[1],
         num_steps=25,
         data_size=2,
-        batch_size=3,
+        batch_size=1,
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS
