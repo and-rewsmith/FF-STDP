@@ -38,6 +38,7 @@ class LIF(nn.Module):
             self.prereset_mem = torch.zeros_like(current)
 
         # Update membrane potential: decay and add current
+        assert self.mem is not None
         self.mem = self.beta * self.mem + current
         self.prereset_mem = self.mem.clone()
 

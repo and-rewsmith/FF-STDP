@@ -17,8 +17,8 @@ def test_membrane_behaves_for_lif_spikes_for_membrane_above_0() -> None:
     assert (lif.prereset_mem == 2).all()  # type: ignore
 
     # make sure no spike at second based on previous current
-    prev_lif_mem = lif.mem.clone()
-    prev_lif_prereset_mem = lif.prereset_mem.clone()
+    prev_lif_mem = lif.mem.clone()  # type: ignore
+    prev_lif_prereset_mem = lif.prereset_mem.clone()  # type: ignore
     input = torch.tensor([[0, 0, 0], [0, 0, 0]])
     spk = lif(input)
     assert (spk == 0).all()  # type: ignore
