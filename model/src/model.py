@@ -10,7 +10,7 @@ import wandb
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, DoubleExponentialFilter, SynapseFilterGroup
+from model.src.util import MovingAverageLIF, SynapseFilterGroup
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
@@ -239,7 +239,7 @@ class Layer(nn.Module):
 
     def train_forward_excitatory_from_layer(self, spike: torch.Tensor, filter_group: SynapseFilterGroup, from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
         """
-        The LPL learning rule is implemented here. It is defined as dw_ji/dt,
+        The LPL excitatory learning rule is implemented here. It is defined as dw_ji/dt,
         for which we optimize the computation with matrices.
 
         This learning rule is broken up into three terms:
@@ -257,9 +257,6 @@ class Layer(nn.Module):
         divided by the batch size to form the final dw_ij/dt matrix. We then
         mask this to filter out the inhibitory weights and apply this to the
         excitatory weights.
-
-        TODOPRE: need to add to desc
-        TODOPRE: need to add mask
         """
 
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
