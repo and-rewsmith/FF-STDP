@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Self
+from enum import Enum
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -10,7 +11,7 @@ import wandb
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
-from model.src.util import MovingAverageLIF, SynapseFilterGroup
+from model.src.util import InhibitoryPlasticityTrace, MovingAverageLIF, ExcitatorySynapseFilterGroup
 
 # Zenke's paper uses a theta_rest of -50mV
 THETA_REST = 0
@@ -27,6 +28,9 @@ XI = 1e-7
 # Zenke's paper uses a delta of 1e-3 (fixed in erratum)
 DELTA = 1e-3
 
+# Zenke's paper uses a kappa of 10 Hz
+KAPPA = 10
+
 MAX_RETAINED_MEMS = 2
 
 DATA_MEM_ASSUMPTION = 0.5
@@ -36,6 +40,12 @@ DECAY_BETA = 0.85
 ENCODE_SPIKE_TRAINS = True
 
 PERCENTAGE_INHIBITORY = 50
+
+
+class SynapticUpdateType(Enum):
+    RECURRENT = 1
+    FORWARD = 2
+    BACKWARD = 3
 
 
 def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
@@ -111,7 +121,7 @@ class Layer(nn.Module):
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
 
         # weights from next layer to this layer
-        self.backward_weights = nn.Linear(layer_settings.size, layer_settings.prev_size)
+        self.backward_weights = nn.Linear(layer_settings.next_size, layer_settings.size)
         torch.nn.init.uniform_(self.backward_weights.weight, a=0.1, b=1.0)
 
         # weights from this layer to this layer
@@ -126,9 +136,12 @@ class Layer(nn.Module):
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.forward_filter_group = SynapseFilterGroup()
-        self.recurrent_filter_group = SynapseFilterGroup()
-        self.backward_filter_group = SynapseFilterGroup()
+        self.forward_filter_group = ExcitatorySynapseFilterGroup()
+        self.recurrent_filter_group = ExcitatorySynapseFilterGroup()
+        self.backward_filter_group = ExcitatorySynapseFilterGroup()
+
+        trace_shape = (layer_settings.batch_size, layer_settings.size)
+        self.inhibitory_trace = InhibitoryPlasticityTrace(trace_shape=trace_shape)
 
         self.forward_counter = 0
 
@@ -138,40 +151,63 @@ class Layer(nn.Module):
     def set_prev_layer(self, prev_layer: Self) -> None:
         self.prev_layer = prev_layer
 
-    # TODO: uncomment backwards connections when we move to more complex network topologies
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # current components
-        recurrent_current = self.recurrent_weights(self.lif.spike_moving_average.spike_rec[-1])
-        forward_current = None
-        # backward_current = None
+        # NOTE: The current takes into account the bias from the `Linear` weights
+        with torch.no_grad():
+            # recurrent
+            inhib_recurrent_mask = self.inhibitory_mask_vec.unsqueeze(0).expand(
+                self.layer_settings.size, -1) * self.recurrent_weights.weight
+            excitatory_recurrent_mask = (~inhib_recurrent_mask.bool()).int().float()
 
-        # initialize forward and backward currents
-        if data is not None:
-            forward_current = self.forward_weights(data)
-        else:
-            assert self.prev_layer is not None
-            forward_current = self.forward_weights(
-                self.prev_layer.lif.spike_moving_average.spike_rec[-1].detach())
+            recurrent_input = self.lif.spike_moving_average.spike_rec[-1]
+            recurrent_current_inhibitory = torch.nn.functional.linear(
+                recurrent_input, inhib_recurrent_mask, self.recurrent_weights.bias)
+            recurrent_current_excitatory = torch.nn.functional.linear(
+                recurrent_input, excitatory_recurrent_mask, self.recurrent_weights.bias)
+            recurrent_contribution = recurrent_current_excitatory - recurrent_current_inhibitory
 
-        # if self.next_layer is not None:
-        #     backward_current = self.backward_weights(self.next_layer.lif.spike_moving_average.spike_rec[-1].detach())
+            total_current = recurrent_contribution
 
-        # sum currents
-        current = recurrent_current
-        if forward_current is not None:
-            current += forward_current
-        else:
-            raise ValueError("forward_current is None")
+            # forward
+            if data is not None:
+                forward_contribution = self.forward_weights(data)
+            else:
+                assert self.prev_layer is not None
 
-        # if backward_current is not None:
-        #     current += backward_current
+                inhib_forward_mask = self.prev_layer.inhibitory_mask_vec.unsqueeze(
+                    0).expand(self.layer_settings.size, -1)
+                excitatory_forward_mask = (~inhib_forward_mask.bool()).int().float()
+
+                forward_input = self.prev_layer.lif.spike_moving_average.spike_rec[-1]
+                forward_current_inhibitory = torch.nn.functional.linear(
+                    forward_input, inhib_forward_mask, self.forward_weights.bias)
+                forward_current_excitatory = torch.nn.functional.linear(
+                    forward_input, excitatory_forward_mask, self.forward_weights.bias)
+                forward_contribution = forward_current_excitatory - forward_current_inhibitory
+
+            total_current += forward_contribution
+
+            # backward
+            if self.next_layer is not None:
+                inhib_backward_mask = self.next_layer.inhibitory_mask_vec.unsqueeze(0).expand(
+                    self.layer_settings.size, -1)
+                excitatory_backward_mask = (~inhib_backward_mask.bool()).int().float()
+
+                backward_input = self.next_layer.lif.spike_moving_average.spike_rec[-1]
+                backward_current_inhibitory = torch.nn.functional.linear(
+                    backward_input, inhib_backward_mask, self.backward_weights.bias)
+                backward_current_excitatory = torch.nn.functional.linear(
+                    backward_input, excitatory_backward_mask, self.backward_weights.bias)
+
+                backward_contribution = backward_current_excitatory - backward_current_inhibitory
+                total_current += backward_contribution
 
         # forward pass
-        spk = self.lif.forward(current)
+        spk = self.lif.forward(total_current)
         self.forward_counter += 1
 
         logging.debug("")
-        logging.debug(f"current: {str(current)}")
+        logging.debug(f"current: {str(total_current)}")
         logging.debug(f"mem: {str(self.lif.mem())}")
         logging.debug(f"spk: {str(spk)}")
 
@@ -221,6 +257,8 @@ class Layer(nn.Module):
         wandb.log({"mem": mem[0][0]}, step=self.forward_counter)
         wandb.log({"spike": spike[0][0]}, step=self.forward_counter)
 
+        wandb.log({"inhibitory_trace": self.inhibitory_trace.tracked_value()}, step=self.forward_counter)
+
         wandb.log(
             {"first_term_no_filter": excitatory_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
         wandb.log(
@@ -245,8 +283,9 @@ class Layer(nn.Module):
         wandb.log(
             {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
 
-    def train_forward_excitatory_from_layer(self, spike: torch.Tensor, filter_group: SynapseFilterGroup,
-                                            from_layer: Optional[Self], data: Optional[torch.Tensor]) -> None:
+    def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
+                                    filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
+                                    data: torch.Tensor) -> None:
         """
         The LPL excitatory learning rule is implemented here. It is defined as dw_ji/dt,
         for which we optimize the computation with matrices.
@@ -268,6 +307,9 @@ class Layer(nn.Module):
         excitatory weights.
         """
 
+        # NOTE: The only time `from_layer` is None is if the first layer is
+        # training its forward weights. In this case `data` will drive the
+        # update.
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
 
         if from_layer is None:
@@ -336,11 +378,22 @@ class Layer(nn.Module):
             dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
                                                          second_term_alpha)
             dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
-            self.forward_weights.weight += dw_dt * mask
+
+            match synaptic_update_type:
+                case SynapticUpdateType.RECURRENT:
+                    weight_ref = self.recurrent_weights
+                case SynapticUpdateType.FORWARD:
+                    weight_ref = self.forward_weights
+                case SynapticUpdateType.BACKWARD:
+                    weight_ref = self.backward_weights
+                case _:
+                    raise ValueError("Invalid synaptic update type")
+
+            weight_ref.weight += dw_dt * mask
 
             # only log for first layer and forward connections
             # TODO: remove or refactor when learning rule is stable
-            if self.prev_layer is None and filter_group is self.forward_filter_group:
+            if self.prev_layer is None and synaptic_update_type == SynapticUpdateType.FORWARD:
                 first_term = ExcitatorySynapticWeightEquation.FirstTerm(
                     alpha_filter=first_term_alpha,
                     epsilon_filter=first_term_epsilon,
@@ -362,21 +415,79 @@ class Layer(nn.Module):
 
                 self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
-    # TODO: uncomment when we move to more complex network topologies
-    def train_forward_excitatory(self, spike: torch.Tensor, data: Optional[torch.Tensor]) -> None:
-        # recurrent connections always trained
-        self.train_forward_excitatory_from_layer(spike, self.recurrent_filter_group, self, data)
+    def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
+                                    from_layer: Self) -> None:
+        # expand the mask across the synaptic weight matrix
+        mask = from_layer.inhibitory_mask_vec.unsqueeze(0).expand(self.layer_settings.size, -1)
+        assert mask.shape == (self.layer_settings.size, from_layer.layer_settings.size)
 
-        # if self.next_layer is not None:
-        #     self.train_forward_excitatory_from_layer(spike, self.backward_filter_group, self.next_layer, data)
+        self.inhibitory_trace.apply(spike)
+
+        with torch.no_grad():
+            x_i = self.inhibitory_trace.tracked_value().unsqueeze(2).expand(-1, -1, from_layer.layer_settings.size)
+            S_j = from_layer.lif.spike_moving_average.spike_rec[-1].unsqueeze(
+                1).expand(-1, self.layer_settings.size, -1)
+            assert x_i.shape == S_j.shape
+
+            # x_i * S_j
+            first_term = (x_i - 2 * KAPPA *
+                          self.inhibitory_trace.tau_stdp) * S_j
+            assert first_term.shape == (self.layer_settings.batch_size,
+                                        self.layer_settings.size, from_layer.layer_settings.size)
+
+            # S_i * x_j
+            S_i = self.lif.spike_moving_average.spike_rec[-1].unsqueeze(
+                2).expand(-1, -1, from_layer.layer_settings.size)
+            x_j = from_layer.inhibitory_trace.tracked_value().unsqueeze(1).expand(
+                -1, self.layer_settings.size, -1)
+
+            second_term = S_i * x_j
+            assert second_term.shape == (self.layer_settings.batch_size,
+                                         self.layer_settings.size, from_layer.layer_settings.size)
+
+            dw_dt = self.layer_settings.learning_rate * (first_term + second_term)
+            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+
+            # update weights and apply mask
+            dw_dt = dw_dt * mask
+
+            # update weights
+            match synaptic_update_type:
+                case SynapticUpdateType.RECURRENT:
+                    weight_ref = self.recurrent_weights
+                case SynapticUpdateType.FORWARD:
+                    weight_ref = self.forward_weights
+                case SynapticUpdateType.BACKWARD:
+                    weight_ref = self.backward_weights
+                case _:
+                    raise ValueError("Invalid synaptic update type")
+
+            weight_ref.weight += dw_dt
+
+    # TODO: uncomment when we move to more complex network topologies
+    def train_synapses(self, spike: torch.Tensor, data: torch.Tensor) -> None:
+        # recurrent connections always trained
+        self.train_excitatory_from_layer(SynapticUpdateType.RECURRENT, spike, self.recurrent_filter_group, self, data)
+        self.train_inhibitory_from_layer(SynapticUpdateType.RECURRENT, spike, self)
+
+        if self.next_layer is not None:
+            self.train_excitatory_from_layer(
+                SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
+            self.train_inhibitory_from_layer(SynapticUpdateType.BACKWARD, spike, self.next_layer)
 
         # if prev layer is None then forward connections driven by data
-        self.train_forward_excitatory_from_layer(spike, self.forward_filter_group, self.prev_layer, data)
+        self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
+                                         self.forward_filter_group, self.prev_layer, data)
+
+        # no forward connections from data are treated as inhibitory
+        if self.prev_layer is not None:
+            self.train_inhibitory_from_layer(SynapticUpdateType.FORWARD, spike, self.prev_layer)
 
         # TODO: remove this when learning rule is stable
         input()
 
 
+# TODO: Impleent functionality to reset the network in between batches
 class Net(nn.Module):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -425,13 +536,10 @@ class Net(nn.Module):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
                             spk = layer.forward(batch[timestep])
-                            data = batch[timestep]
                         else:
                             spk = layer.forward()
-                            data = None
 
-                        layer.train_forward_excitatory(spk, data)
-                        # layer.train_forward_inhibitory(spk, data)
+                        layer.train_synapses(spk, batch[timestep])
 
 
 def set_logging() -> None:
@@ -451,8 +559,8 @@ if __name__ == "__main__":
     set_logging()
 
     settings = Settings(
-        layer_sizes=[1],
-        num_steps=25,
+        layer_sizes=[2],
+        num_steps=100,
         data_size=2,
         batch_size=1,
         learning_rate=0.01,

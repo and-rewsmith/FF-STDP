@@ -1,3 +1,4 @@
+from typing import Tuple
 import pytest
 import torch
 
@@ -66,13 +67,14 @@ def test_variance_moving_average() -> None:
 
 
 def test_inhibitory_plasticity_trace() -> None:
-    ipt = InhibitoryPlasticityTrace()
+    trace_shape: Tuple[int, int] = (1, 1)
+    ipt = InhibitoryPlasticityTrace(trace_shape)
 
     # Apply a single spike
-    assert ipt.apply(spike=torch.Tensor([1]), dt=1).item() == 1
+    assert ipt.apply(spike=torch.Tensor([[1]]), dt=1).item() == 1
 
     # Apply another spike, the trace should increase above 2
-    assert ipt.apply(spike=torch.Tensor([2]), dt=1).item() == 2.9512295722961426
+    assert ipt.apply(spike=torch.Tensor([[2]]), dt=1).item() == 2.9512295722961426
 
     # After much time with no spikes, the trace should decay
-    assert ipt.apply(spike=torch.Tensor([0]), dt=20).item() == 1.0856966972351074
+    assert ipt.apply(spike=torch.Tensor([[0]]), dt=20).item() == 1.0856966972351074
