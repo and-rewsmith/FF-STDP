@@ -10,5 +10,6 @@ pip install pycodestyle
 # Run PEP 8 compliance check
 pycodestyle ./datasets --max-line-length=120
 pycodestyle ./model --max-line-length=120
+pycodestyle ./benchmarks --max-line-length=120
 
 echo "PEP 8 check passed successfully!"
