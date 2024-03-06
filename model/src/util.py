@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from typing import Deque, Optional
+from typing import Deque, Optional, Tuple
 
 import torch
 
@@ -115,7 +115,7 @@ class DoubleExponentialFilter:
         return self.fall
 
 
-class SynapseFilterGroup:
+class ExcitatorySynapseFilterGroup:
 
     def __init__(self) -> None:
         self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
@@ -207,28 +207,21 @@ class VarianceMovingAverage:
 
 class InhibitoryPlasticityTrace:
 
-    def __init__(self, tau_stdp: float = TAU_STDP) -> None:
+    def __init__(self, trace_shape: Tuple[int, int], tau_stdp: float = TAU_STDP) -> None:
         """
         Zenke's paper uses a tau_stdp of 20ms.
 
         TODO: Concern here is that we are initializing the state with zeros,
                 which might not be the best approach.
         """
-        self.trace: Optional[torch.Tensor] = None
+        self.trace = torch.zeros(trace_shape)
         self.tau_stdp: float = tau_stdp
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
-        if self.trace is None:
-            # Initialize trace based on the first spike received
-            self.trace = torch.zeros_like(spike)
-
         decay_factor = math.exp(-dt / self.tau_stdp)
         self.trace = self.trace * decay_factor + spike
 
         return self.trace
 
     def tracked_value(self) -> torch.Tensor:
-        if self.trace is None:
-            raise ValueError("No data has been received yet")
-
         return self.trace
