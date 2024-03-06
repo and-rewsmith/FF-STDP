@@ -4,7 +4,8 @@ from collections import deque
 from typing import Deque, Optional, Tuple
 
 import torch
-from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
+from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, \
+    TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 
 from model.src.lif import LIF
 
