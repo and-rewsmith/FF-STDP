@@ -1,28 +1,19 @@
+from enum import Enum
 import math
 from collections import deque
 from typing import Deque, Optional, Tuple
 
 import torch
+from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, \
+    TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 
 from model.src.lif import LIF
 
 
-# Zenke's paper uses a tau_mean of 600s
-TAU_MEAN = 600000
-# Zenke's paper uses a tau_var of 20ms
-TAU_VAR = 20
-# Zenke's paper uses a tau_stdp of 20ms
-TAU_STDP = 20
-# Zenke's paper uses a .1ms time step
-DT = .1
-
-# Zenke's paper uses tau_rise and tau_fall of these values in units of ms
-TAU_RISE_ALPHA = 2
-TAU_FALL_ALPHA = 10
-TAU_RISE_EPSILON = 5
-TAU_FALL_EPSILON = 20
-
-MAX_RETAINED_SPIKES = int(20 / DT)
+class SynapticUpdateType(Enum):
+    RECURRENT = 1
+    FORWARD = 2
+    BACKWARD = 3
 
 
 class MovingAverageLIF():

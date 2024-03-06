@@ -10,5 +10,6 @@ pip install types-toml
 
 mypy --config-file ./mypi.ini datasets
 mypy --config-file ./mypi.ini model
+mypy --config-file ./mypi.ini benchmarks
 
 echo "Mypy check passed successfully!"
