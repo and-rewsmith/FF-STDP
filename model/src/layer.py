@@ -41,6 +41,9 @@ class Layer(nn.Module):
         torch.nn.init.uniform_(self.recurrent_weights.weight, a=0.1, b=1.0)
 
         self.inhibitory_mask_vec = inhibitory_mask_vec(layer_settings.size, PERCENTAGE_INHIBITORY)
+        self.excitatory_mask_vec = (~self.inhibitory_mask_vec.bool()).int().float()
+        # check that inhib is opposite of excit
+        assert torch.all(self.inhibitory_mask_vec + self.excitatory_mask_vec == 1)
 
         self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
                                     beta=DECAY_BETA)
@@ -66,7 +69,7 @@ class Layer(nn.Module):
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
         # NOTE: The current takes into account the bias from the `Linear` weights
         with torch.no_grad():
-            excitatory_recurrent_mask = (~self.inhibitory_mask_vec.bool()).int().float()
+            excitatory_recurrent_mask = self.excitatory_mask_vec
 
             # recurrent
             inhib_recurrent_masked = self.inhibitory_mask_vec.unsqueeze(0).expand(
@@ -93,7 +96,7 @@ class Layer(nn.Module):
             else:
                 assert self.prev_layer is not None
 
-                excitatory_forward_mask = (~self.prev_layer.inhibitory_mask_vec.bool()).int().float()
+                excitatory_forward_mask = self.prev_layer.excitatory_mask_vec
 
                 inhib_forward_masked = self.prev_layer.inhibitory_mask_vec.unsqueeze(
                     0).expand(self.layer_settings.size, -1) * self.forward_weights.weight
@@ -114,7 +117,7 @@ class Layer(nn.Module):
 
             # backward
             if self.next_layer is not None:
-                excitatory_backward_mask = (~self.next_layer.inhibitory_mask_vec.bool()).int().float()
+                excitatory_backward_mask = self.next_layer.excitatory_mask_vec
 
                 inhib_backward_masked = self.next_layer.inhibitory_mask_vec.unsqueeze(0).expand(
                     self.layer_settings.size, -1) * self.backward_weights.weight
