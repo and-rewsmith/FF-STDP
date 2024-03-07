@@ -7,7 +7,7 @@ from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import SequentialDataset
 from model.src.constants import ENCODE_SPIKE_TRAINS
 from model.src.logging_util import set_logging
-from model.src.model import Net
+from model.src.network import Net
 from model.src.settings import Settings
 
 
