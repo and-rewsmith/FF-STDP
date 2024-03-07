@@ -212,8 +212,8 @@ class Layer(nn.Module):
             # neuron. The key here is that we need to know what the excitatory
             # neuron is in order to figure out how to index into the forward
             # weights.
-            excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1).expand(-1, self.layer_settings.data_size) * \
-                self.forward_weights.weight
+            excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1).expand(-1, self.layer_settings.data_size) \
+                * self.forward_weights.weight
             # Identify rows that are not all zeros
             non_zero_rows = excitatory_masked_weight.any(dim=1)
             # Filter out rows that are all zeros
