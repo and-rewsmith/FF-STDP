@@ -188,34 +188,43 @@ class Layer(nn.Module):
             f"forward weights shape: {self.forward_weights.weight.shape}")
         logging.debug(f"forward weights: {self.forward_weights.weight}")
 
-        wandb.log({"mem": mem[0][0]}, step=self.forward_counter)
-        wandb.log({"spike": spike[0][0]}, step=self.forward_counter)
+        def reduce_feature_dims_with_mask(tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return tensor[mask.unsqueeze(0).expand(self.layer_settings.batch_size, -1).bool()]
 
-        wandb.log({"inhibitory_trace": self.inhibitory_trace.tracked_value()}, step=self.forward_counter)
-
-        wandb.log(
-            {"first_term_no_filter": excitatory_equation.first_term.no_filter[0][0][0]}, step=self.forward_counter)
-        wandb.log(
-            {"first_term_epsilon": excitatory_equation.first_term.epsilon_filter[0][0][0]},
-            step=self.forward_counter)
-
-        wandb.log(
-            {"second_term_prediction_error": excitatory_equation.second_term.prediction_error[0][0]},
-            step=self.forward_counter)
-        wandb.log(
-            {"second_term_deviation_scale": excitatory_equation.second_term.deviation_scale[0][0]},
-            step=self.forward_counter)
-        wandb.log(
-            {"second_term_deviation": excitatory_equation.second_term.deviation[0][0]}, step=self.forward_counter)
-        wandb.log(
-            {"second_term_no_filter": excitatory_equation.second_term.no_filter[0][0]}, step=self.forward_counter)
-
-        wandb.log(
-            {"first_term": excitatory_equation.first_term.alpha_filter[0][0][0]}, step=self.forward_counter)
-        wandb.log({"second_term": excitatory_equation.second_term.alpha_filter[0][0][0]},
+        # NOTE: if we want to log just one data point index the batch dim into these tensors
+        excitatory_mem = reduce_feature_dims_with_mask(mem, self.excitatory_mask_vec)
+        inhibitory_mem = reduce_feature_dims_with_mask(mem, self.inhibitory_mask_vec)
+        excitatory_spike = reduce_feature_dims_with_mask(spike, self.excitatory_mask_vec)
+        inhibitory_spike = reduce_feature_dims_with_mask(spike, self.inhibitory_mask_vec)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem.mean()}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem.mean()}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike.mean()},
                   step=self.forward_counter)
-        wandb.log(
-            {"dw_dt": dw_dt[0][0]}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike.mean()},
+                  step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]}, step=self.forward_counter)
+
+        # TODO: The below metrics are specific to the dataset so will eventually need to be removed
+
+        if self.layer_settings.layer_id == 0:
+            # Log for a layer the weight from the first datapoint to the excitatory
+            # neuron. The key here is that we need to know what the excitatory
+            # neuron is in order to figure out how to index into the forward
+            # weights.
+            excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1).expand(-1, self.layer_settings.data_size) \
+                * self.forward_weights.weight
+            # Identify rows that are not all zeros
+            non_zero_rows = excitatory_masked_weight.any(dim=1)
+            # Filter out rows that are all zeros
+            excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
+            assert excitatory_masked_weight.shape == (1, self.layer_settings.data_size)
+
+            wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
+                      step=self.forward_counter)
+            wandb.log(
+                {f"layer_{self.layer_settings.layer_id}_exc_weight_1": excitatory_masked_weight[0][1]},
+                step=self.forward_counter)
 
     def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
@@ -347,6 +356,9 @@ class Layer(nn.Module):
                     second_term=second_term,
                 )
 
+                # TODO: Remove this when we decouple the logging for the
+                # pointcloud benchmark from the model code
+                self.data = data
                 self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
