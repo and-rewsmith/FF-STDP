@@ -8,7 +8,7 @@ from model.src.layer import Layer
 from model.src.settings import LayerSettings, Settings
 
 
-# TODO: Impleent functionality to reset the network in between batches
+# TODO: Implement functionality to reset the network in between batches
 class Net(nn.Module):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -21,9 +21,10 @@ class Net(nn.Module):
             prev_size = settings.data_size if i == 0 else settings.layer_sizes[i-1]
             next_size = settings.layer_sizes[i+1] if i < len(
                 settings.layer_sizes) - 1 else 0
-            layer_settings = LayerSettings(
-                prev_size, size, next_size,
-                settings.batch_size, settings.learning_rate, settings.data_size)
+            layer_id = i
+            layer_settings = LayerSettings(layer_id,
+                                           prev_size, size, next_size,
+                                           settings.batch_size, settings.learning_rate, settings.data_size)
             network_layer_settings.append(layer_settings)
 
         # make layers
@@ -47,8 +48,7 @@ class Net(nn.Module):
                 batch = batch.permute(1, 0, 2)
 
                 if self.settings.encode_spike_trains:
-                    # poisson encode
-                    batch = spikegen.rate(batch, time_var_input=True)
+                    batch = (batch > 0.5).float()
 
                 logging.info(
                     f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
@@ -61,3 +61,6 @@ class Net(nn.Module):
                             spk = layer.forward()
 
                         layer.train_synapses(spk, batch[timestep])
+
+                # TODO: remove when network is stabilized
+                raise NotImplementedError("Network is not yet stabilized for multi batch")

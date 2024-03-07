@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     settings = Settings(
         layer_sizes=[2],
-        num_steps=100,
+        num_steps=5000,
         data_size=2,
         batch_size=1,
         learning_rate=0.01,
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     wandb.init(
         # set the wandb project where this run will be logged
-        project="LPL-SNN",
+        project="LPL-SNN-2",
 
         # track hyperparameters and run metadata
         config={
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
     test_dataframe = pd.read_csv(TEST_DATA_PATH)
-    test_sequential_dataset = SequentialDataset(test_dataframe)
+    test_sequential_dataset = SequentialDataset(test_dataframe, num_timesteps=settings.num_steps)
     test_data_loader = DataLoader(
         test_sequential_dataset, batch_size=10, shuffle=False)
 

@@ -17,8 +17,9 @@ class Settings:
 
 
 class LayerSettings:
-    def __init__(self, prev_size: int, size: int, next_size: int,
+    def __init__(self, layer_id: int, prev_size: int, size: int, next_size: int,
                  batch_size: int, learning_rate: float, data_size: int) -> None:
+        self.layer_id = layer_id
         self.prev_size = prev_size
         self.size = size
         self.next_size = next_size
