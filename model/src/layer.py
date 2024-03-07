@@ -198,8 +198,10 @@ class Layer(nn.Module):
         inhibitory_spike = reduce_feature_dims_with_mask(spike, self.inhibitory_mask_vec)
         wandb.log({f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem.mean()}, step=self.forward_counter)
         wandb.log({f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem.mean()}, step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike.mean()}, step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike.mean()}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike.mean()},
+                  step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike.mean()},
+                  step=self.forward_counter)
         wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]}, step=self.forward_counter)
         wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]}, step=self.forward_counter)
 
@@ -220,7 +222,8 @@ class Layer(nn.Module):
         wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
                   step=self.forward_counter)
         wandb.log(
-            {f"layer_{self.layer_settings.layer_id}_exc_weight_1": excitatory_masked_weight[0][1]}, step=self.forward_counter)
+            {f"layer_{self.layer_settings.layer_id}_exc_weight_1": excitatory_masked_weight[0][1]},
+            step=self.forward_counter)
 
     def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
