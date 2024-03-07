@@ -17,19 +17,19 @@ DELTA = 1e-3
 KAPPA = 10
 
 # Zenke's paper uses a tau_mean of 600s
-TAU_MEAN = 600000
+TAU_MEAN = 600
 # Zenke's paper uses a tau_var of 20ms
-TAU_VAR = 20
+TAU_VAR = .020
 # Zenke's paper uses a tau_stdp of 20ms
-TAU_STDP = 20
+TAU_STDP = .020
 # Zenke's paper uses a .1ms time step
 DT = .1
 
 # Zenke's paper uses tau_rise and tau_fall of these values in units of ms
-TAU_RISE_ALPHA = 2
-TAU_FALL_ALPHA = 10
-TAU_RISE_EPSILON = 5
-TAU_FALL_EPSILON = 20
+TAU_RISE_ALPHA = .002
+TAU_FALL_ALPHA = .010
+TAU_RISE_EPSILON = .005
+TAU_FALL_EPSILON = .020
 
 MAX_RETAINED_SPIKES = int(20 / DT)
 

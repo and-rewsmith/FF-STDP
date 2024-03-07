@@ -66,19 +66,26 @@ class Layer(nn.Module):
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
         # NOTE: The current takes into account the bias from the `Linear` weights
         with torch.no_grad():
+            excitatory_recurrent_mask = (~self.inhibitory_mask_vec.bool()).int().float()
+
             # recurrent
-            inhib_recurrent_mask = self.inhibitory_mask_vec.unsqueeze(0).expand(
+            inhib_recurrent_masked = self.inhibitory_mask_vec.unsqueeze(0).expand(
                 self.layer_settings.size, -1) * self.recurrent_weights.weight
-            excitatory_recurrent_mask = (~inhib_recurrent_mask.bool()).int().float()
+            excitatory_recurrent_masked = excitatory_recurrent_mask.unsqueeze(0).expand(
+                self.layer_settings.size, -1) * self.recurrent_weights.weight
+
+            assert inhib_recurrent_masked.shape == self.recurrent_weights.weight.shape
+            assert excitatory_recurrent_masked.shape == self.recurrent_weights.weight.shape
 
             recurrent_input = self.lif.spike_moving_average.spike_rec[-1]
             recurrent_current_inhibitory = torch.nn.functional.linear(
-                recurrent_input, inhib_recurrent_mask, self.recurrent_weights.bias)
+                recurrent_input, inhib_recurrent_masked, self.recurrent_weights.bias)
             recurrent_current_excitatory = torch.nn.functional.linear(
-                recurrent_input, excitatory_recurrent_mask, self.recurrent_weights.bias)
+                recurrent_input, excitatory_recurrent_masked, self.recurrent_weights.bias)
             recurrent_contribution = recurrent_current_excitatory - recurrent_current_inhibitory
 
             total_current = recurrent_contribution
+            assert total_current.shape == (self.layer_settings.batch_size, self.layer_settings.size)
 
             # forward
             if data is not None:
@@ -86,30 +93,42 @@ class Layer(nn.Module):
             else:
                 assert self.prev_layer is not None
 
-                inhib_forward_mask = self.prev_layer.inhibitory_mask_vec.unsqueeze(
-                    0).expand(self.layer_settings.size, -1)
-                excitatory_forward_mask = (~inhib_forward_mask.bool()).int().float()
+                excitatory_forward_mask = (~self.prev_layer.inhibitory_mask_vec.bool()).int().float()
+
+                inhib_forward_masked = self.prev_layer.inhibitory_mask_vec.unsqueeze(
+                    0).expand(self.layer_settings.size, -1) * self.forward_weights.weight
+                excitatory_forward_masked = excitatory_forward_mask.unsqueeze(
+                    0).expand(self.layer_settings.size, -1) * self.forward_weights.weight
+
+                assert inhib_forward_masked.shape == self.forward_weights.weight.shape
+                assert excitatory_forward_masked.shape == self.forward_weights.weight.shape
 
                 forward_input = self.prev_layer.lif.spike_moving_average.spike_rec[-1]
                 forward_current_inhibitory = torch.nn.functional.linear(
-                    forward_input, inhib_forward_mask, self.forward_weights.bias)
+                    forward_input, inhib_forward_masked, self.forward_weights.bias)
                 forward_current_excitatory = torch.nn.functional.linear(
-                    forward_input, excitatory_forward_mask, self.forward_weights.bias)
+                    forward_input, excitatory_forward_masked, self.forward_weights.bias)
                 forward_contribution = forward_current_excitatory - forward_current_inhibitory
 
             total_current += forward_contribution
 
             # backward
             if self.next_layer is not None:
-                inhib_backward_mask = self.next_layer.inhibitory_mask_vec.unsqueeze(0).expand(
-                    self.layer_settings.size, -1)
-                excitatory_backward_mask = (~inhib_backward_mask.bool()).int().float()
+                excitatory_backward_mask = (~self.next_layer.inhibitory_mask_vec.bool()).int().float()
+
+                inhib_backward_masked = self.next_layer.inhibitory_mask_vec.unsqueeze(0).expand(
+                    self.layer_settings.size, -1) * self.backward_weights.weight
+                excitatory_backward_masked = excitatory_backward_mask.unsqueeze(
+                    0).expand(self.layer_settings.size, -1) * self.backward_weights.weight
+
+                assert inhib_backward_masked.shape == self.backward_weights.weight.shape
+                assert excitatory_backward_masked.shape == self.backward_weights.weight.shape
 
                 backward_input = self.next_layer.lif.spike_moving_average.spike_rec[-1]
                 backward_current_inhibitory = torch.nn.functional.linear(
-                    backward_input, inhib_backward_mask, self.backward_weights.bias)
+                    backward_input, inhib_backward_masked, self.backward_weights.bias)
                 backward_current_excitatory = torch.nn.functional.linear(
-                    backward_input, excitatory_backward_mask, self.backward_weights.bias)
+                    backward_input, excitatory_backward_masked, self.backward_weights.bias)
 
                 backward_contribution = backward_current_excitatory - backward_current_inhibitory
                 total_current += backward_contribution
@@ -289,7 +308,7 @@ class Layer(nn.Module):
             # update weights
             dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
                                                          second_term_alpha)
-            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+            dw_dt = dw_dt.sum(0) / dw_dt.shape[0] * mask
 
             match synaptic_update_type:
                 case SynapticUpdateType.RECURRENT:
@@ -301,7 +320,7 @@ class Layer(nn.Module):
                 case _:
                     raise ValueError("Invalid synaptic update type")
 
-            weight_ref.weight += dw_dt * mask
+            weight_ref.weight += dw_dt
 
             # only log for first layer and forward connections
             # TODO: remove or refactor when learning rule is stable
