@@ -65,6 +65,42 @@ class Layer(nn.Module):
 
         self.forward_counter = 0
 
+    def _apply(self, fn):  # type: ignore
+        """
+        Override apply, but we don't want to apply to sibling layers as that
+        will cause a stack overflow. The hidden layers are contained in a
+        collection in the higher-level RecurrentFFNet. They will all get the
+        apply call from there.
+        """
+        # Remove `previous_layer` and `next_layer` temporarily
+        previous_layer = self.prev_layer
+        next_layer = self.next_layer
+        self.prev_layer = None
+        self.next_layer = None
+
+        # Apply `fn` to each parameter and buffer of this layer
+        for param in self._parameters.values():
+            if param is not None:
+                # Tensors stored in modules are graph leaves, and we don't
+                # want to create copy nodes, so we have to unpack the data.
+                param.data = fn(param.data)
+                if param._grad is not None:
+                    param._grad.data = fn(param._grad.data)
+
+        for key, buf in self._buffers.items():
+            if buf is not None:
+                self._buffers[key] = fn(buf)
+
+        # Apply `fn` to submodules
+        for module in self.children():
+            module._apply(fn)
+
+        # Restore `previous_layer` and `next_layer`
+        self.prev_layer = previous_layer
+        self.next_layer = next_layer
+
+        return self
+
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
 
