@@ -4,4 +4,10 @@ set -e
 # Upgrade pip
 python -m pip install --upgrade pip
 
-python -m model.tests.smoke.smoke_zenke_2a
+export WANDB_MODE=dryrun
+python -m model.tests.smoke.smoke_zenke_2a --config-file ./test/config-files/ci.toml > ci_log.txt 2>&1 || python_exit_code=$?
+
+if [ -n "$python_exit_code" ]; then
+    cat log.txt
+    exit $python_exit_code
+fi
