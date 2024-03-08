@@ -10,7 +10,7 @@ from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
 from model.src.util import ExcitatorySynapseFilterGroup, InhibitoryPlasticityTrace, MovingAverageLIF, SynapticUpdateType
 
-PERCENTAGE_INHIBITORY = 49
+PERCENTAGE_INHIBITORY = 50
 
 
 def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
