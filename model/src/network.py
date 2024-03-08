@@ -2,7 +2,6 @@ import logging
 
 from torch import nn
 from torch.utils.data import DataLoader
-from snntorch import spikegen
 
 from model.src.layer import Layer
 from model.src.settings import LayerSettings, Settings

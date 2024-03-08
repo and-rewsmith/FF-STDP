@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
-from datasets.src.zenke_2a.dataset import SequentialDataset
+from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from datasets.src.zenke_2a import datagen
 
 # Constants for testing
@@ -19,7 +19,7 @@ def test_data() -> pd.DataFrame:
 def test_sequential_dataset_initialization(test_data: pd.DataFrame) -> None:
     """Test the initialization of the SequentialDataset."""
     dataframe = datagen.generate_sequential_dataset()
-    dataset = SequentialDataset(dataframe)
+    dataset = SequentialDataset(DatasetType.TRAIN, dataframe)
     assert isinstance(
         dataset, SequentialDataset), "Dataset should be an instance of SequentialDataset"
 
@@ -27,7 +27,7 @@ def test_sequential_dataset_initialization(test_data: pd.DataFrame) -> None:
 def test_sequential_dataset_getitem(test_data: pd.DataFrame) -> None:
     """Test the __getitem__ method of the SequentialDataset."""
     dataframe = datagen.generate_sequential_dataset()
-    dataset = SequentialDataset(dataframe)
+    dataset = SequentialDataset(DatasetType.TRAIN, dataframe)
 
     sample = dataset[0]
     assert torch.is_tensor(
