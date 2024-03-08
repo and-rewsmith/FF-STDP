@@ -15,7 +15,6 @@ ENCODE_SPIKE_TRAINS = True
 
 
 if __name__ == "__main__":
-
     torch.autograd.set_detect_anomaly(True)
     torch.manual_seed(1234)
     torch.set_printoptions(precision=10, sci_mode=False)
@@ -29,7 +28,8 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         learning_rate=0.01,
         epochs=10,
-        encode_spike_trains=ENCODE_SPIKE_TRAINS
+        encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        device=torch.device("cpu")
     )
 
     wandb.init(

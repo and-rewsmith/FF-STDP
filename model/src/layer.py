@@ -222,7 +222,7 @@ class Layer(nn.Module):
             non_zero_rows = excitatory_masked_weight.any(dim=1)
             # Filter out rows that are all zeros
             excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
-            assert excitatory_masked_weight.shape == (1, self.layer_settings.data_size)
+            assert excitatory_masked_weight.shape == (self.layer_settings.size / 2, self.layer_settings.data_size)
 
             wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
                       step=self.forward_counter)
