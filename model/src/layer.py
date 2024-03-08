@@ -29,38 +29,77 @@ class Layer(nn.Module):
 
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
-            layer_settings.prev_size, layer_settings.size).to(self.layer_settings.device)
+            layer_settings.prev_size, layer_settings.size)
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
 
         # weights from next layer to this layer
-        self.backward_weights = nn.Linear(layer_settings.next_size, layer_settings.size).to(self.layer_settings.device)
+        self.backward_weights = nn.Linear(layer_settings.next_size, layer_settings.size)
         torch.nn.init.uniform_(self.backward_weights.weight, a=0.1, b=1.0)
 
         # weights from this layer to this layer
-        self.recurrent_weights = nn.Linear(layer_settings.size, layer_settings.size).to(self.layer_settings.device)
+        self.recurrent_weights = nn.Linear(layer_settings.size, layer_settings.size)
         torch.nn.init.uniform_(self.recurrent_weights.weight, a=0.1, b=1.0)
 
-        self.inhibitory_mask_vec = inhibitory_mask_vec(
-            layer_settings.size, PERCENTAGE_INHIBITORY).to(self.layer_settings.device)
-        self.excitatory_mask_vec = (~self.inhibitory_mask_vec.bool()).int(
-        ).float().to(self.layer_settings.device).to(self.layer_settings.device)
-        # check that inhib is opposite of excit
+        self.inhibitory_mask_vec_ = inhibitory_mask_vec(
+            layer_settings.size, PERCENTAGE_INHIBITORY)
+        self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
+        ).float()
+        self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
+        self.register_buffer("excitatory_mask_vec", self.excitatory_mask_vec_)
+        self.excitatory_mask_vec: torch.Tensor = self.excitatory_mask_vec
+        self.inhibitory_mask_vec: torch.Tensor = self.inhibitory_mask_vec
         assert torch.all(self.inhibitory_mask_vec + self.excitatory_mask_vec == 1)
 
         self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                    beta=DECAY_BETA, device=layer_settings.device)
+                                    beta=DECAY_BETA, device=self.layer_settings.device)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.forward_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
-        self.recurrent_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
-        self.backward_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
+        self.forward_filter_group = ExcitatorySynapseFilterGroup(self.layer_settings.device)
+        self.recurrent_filter_group = ExcitatorySynapseFilterGroup(self.layer_settings.device)
+        self.backward_filter_group = ExcitatorySynapseFilterGroup(self.layer_settings.device)
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(device=self.layer_settings.device, trace_shape=trace_shape)
 
         self.forward_counter = 0
+
+    def _apply(self, fn):  # type: ignore
+        """
+        Override apply, but we don't want to apply to sibling layers as that
+        will cause a stack overflow. The hidden layers are contained in a
+        collection in the higher-level RecurrentFFNet. They will all get the
+        apply call from there.
+        """
+        # Remove `previous_layer` and `next_layer` temporarily
+        previous_layer = self.prev_layer
+        next_layer = self.next_layer
+        self.prev_layer = None
+        self.next_layer = None
+
+        # Apply `fn` to each parameter and buffer of this layer
+        for param in self._parameters.values():
+            if param is not None:
+                # Tensors stored in modules are graph leaves, and we don't
+                # want to create copy nodes, so we have to unpack the data.
+                param.data = fn(param.data)
+                if param._grad is not None:
+                    param._grad.data = fn(param._grad.data)
+
+        for key, buf in self._buffers.items():
+            if buf is not None:
+                self._buffers[key] = fn(buf)
+
+        # Apply `fn` to submodules
+        for module in self.children():
+            module._apply(fn)
+
+        # Restore `previous_layer` and `next_layer`
+        self.prev_layer = previous_layer
+        self.next_layer = next_layer
+
+        return self
 
     def set_next_layer(self, next_layer: Self) -> None:
         self.next_layer = next_layer
@@ -253,14 +292,14 @@ class Layer(nn.Module):
         mask this to filter out the inhibitory weights and apply this to the
         excitatory weights.
         """
-
         # NOTE: The only time `from_layer` is None is if the first layer is
         # training its forward weights. In this case `data` will drive the
         # update.
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
 
         if from_layer is None:
-            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size).to(self.layer_settings.device)
+            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size).to(
+                device=self.layer_settings.device)
         else:
             # flip the mask as this is for excitatory connections
             mask = (~from_layer.inhibitory_mask_vec.bool()).int()
@@ -362,7 +401,7 @@ class Layer(nn.Module):
 
                 # TODO: Remove this when we decouple the logging for the
                 # pointcloud benchmark from the model code
-                self.data = data
+                self.data: torch.Tensor = data
                 self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
