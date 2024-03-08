@@ -24,9 +24,6 @@ class SequentialDataset(Dataset):
                  planned_batch_size: int = PLANNED_BATCH_SIZE) -> None:
         """
         Initializes the dataset by loading the data from a CSV file.
-
-        Parameters:
-        csv_file (str): Path to the CSV file containing the generated data.
         """
 
         # check the dims of this dataframe and if the dataframe dims don't
@@ -61,12 +58,6 @@ class SequentialDataset(Dataset):
     def __getitem__(self, idx: Union[int, List[int], torch.Tensor]) -> torch.Tensor:
         """
         Retrieves a sample from the dataset at the specified index.
-
-        Parameters:
-        idx (int): Index of the sample to retrieve.
-
-        Returns:
-        torch.Tensor: Tensor containing all datapoints of the requested sample.
         """
         if torch.is_tensor(idx):
             idx = idx.tolist()  # type: ignore[union-attr]

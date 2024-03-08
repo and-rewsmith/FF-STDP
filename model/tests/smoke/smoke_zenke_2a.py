@@ -30,7 +30,8 @@ if __name__ == "__main__":
         batch_size=THIS_TEST_NUM_SAMPLES,
         learning_rate=0.01,
         epochs=10,
-        encode_spike_trains=ENCODE_SPIKE_TRAINS
+        encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        device=torch.device("cpu")
     )
 
     wandb.init(
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     test_data_loader = DataLoader(
         test_sequential_dataset, batch_size=10, shuffle=False)
 
-    net = Net(settings)
+    net = Net(settings).to(settings.device)
 
     # figure out what the excitatory mask is, find that neuron, then find the weights for that neuron
     layer: Layer = net.layers[0]
