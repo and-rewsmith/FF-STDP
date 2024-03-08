@@ -36,7 +36,8 @@ class SequentialDataset(Dataset):
         sample_data = sample_data[['x', 'y']].to_numpy()
         sample_tensor = torch.tensor(sample_data, dtype=torch.float)
 
-        if len(dataframe_tmp) % planned_batch_size != 0 or sample_tensor.shape[0] != num_timesteps:
+        # NOTE: single batch verification
+        if len(dataframe_tmp) / num_timesteps != planned_batch_size or sample_tensor.shape[0] != num_timesteps:
             logging.warning(
                 "Dataframe dimensions do not match the planned batch size or number of timesteps. Regenerating data...")
             dataframe_tmp = generate_sequential_dataset(num_samples=planned_batch_size, num_datapoints=num_timesteps)

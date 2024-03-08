@@ -62,4 +62,4 @@ class Net(nn.Module):
                         layer.train_synapses(spk, batch[timestep])
 
                 # TODO: remove when network is stabilized
-                raise NotImplementedError("Network is not yet stabilized for multi batch")
+                return
