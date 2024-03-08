@@ -46,8 +46,8 @@ class Layer(nn.Module):
         ).float()
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
         self.register_buffer("excitatory_mask_vec", self.excitatory_mask_vec_)
-        self.excitatory_mask_vec = self.excitatory_mask_vec
-        self.inhibitory_mask_vec = self.inhibitory_mask_vec
+        self.excitatory_mask_vec: torch.Tensor = self.excitatory_mask_vec
+        self.inhibitory_mask_vec: torch.Tensor = self.inhibitory_mask_vec
         assert torch.all(self.inhibitory_mask_vec + self.excitatory_mask_vec == 1)
 
         self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
@@ -401,7 +401,7 @@ class Layer(nn.Module):
 
                 # TODO: Remove this when we decouple the logging for the
                 # pointcloud benchmark from the model code
-                self.data = data
+                self.data: torch.Tensor = data
                 self.__log_equation_context(synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,

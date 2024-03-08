@@ -90,11 +90,11 @@ class DoubleExponentialFilter:
         self.device = device
 
     def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
-        if self.rise == None:
+        if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value).to(self.device)
 
-        if self.fall == None:
+        if self.fall is None:
             # Initialize fall based on the first error received
             self.fall = torch.zeros_like(value).to(self.device)
 
