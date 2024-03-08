@@ -7,10 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
-from datasets.src.zenke_2a.datagen import generate_sequential_dataset
-
-NUM_TIMESTEPS = 100
-PLANNED_BATCH_SIZE = 1
+from datasets.src.zenke_2a.datagen import NUM_TIMESTEPS, PLANNED_BATCH_SIZE, generate_sequential_dataset
 
 
 class DatasetType(Enum):
