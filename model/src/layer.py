@@ -433,4 +433,5 @@ class Layer(nn.Module):
             self.train_inhibitory_from_layer(SynapticUpdateType.FORWARD, spike, self.prev_layer)
 
         # TODO: remove this when learning rule is stable
+        logging.info(f"trained layer {self.layer_settings.layer_id} synapses")
         input()

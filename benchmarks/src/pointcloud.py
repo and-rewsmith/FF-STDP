@@ -1,4 +1,5 @@
-import gc
+from model.src.settings import Settings
+from model.src.network import Net
 import pandas as pd
 import wandb
 import torch
@@ -6,10 +7,11 @@ from torch.utils.data import DataLoader
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.constants import ENCODE_SPIKE_TRAINS
-from model.src.logging_util import set_logging
-from model.src.network import Net
-from model.src.settings import Settings
+from model.src import logging_util
+
+NUM_STEPS = 5000
+BATCH_SIZE = 500
+ENCODE_SPIKE_TRAINS = True
 
 
 if __name__ == "__main__":
@@ -18,13 +20,13 @@ if __name__ == "__main__":
     torch.manual_seed(1234)
     torch.set_printoptions(precision=10, sci_mode=False)
 
-    set_logging()
+    logging_util.set_logging()
 
     settings = Settings(
         layer_sizes=[2],
-        num_steps=5000,
+        num_steps=NUM_STEPS,
         data_size=2,
-        batch_size=500,
+        batch_size=BATCH_SIZE,
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS
@@ -55,10 +57,6 @@ if __name__ == "__main__":
         test_dataframe, num_timesteps=settings.num_steps, planned_batch_size=settings.batch_size)
     test_data_loader = DataLoader(
         test_sequential_dataset, batch_size=10, shuffle=False)
-
-    # del train_dataframe
-    # del test_dataframe
-    # gc.collect()
 
     net = Net(settings)
     net.process_data_online(train_data_loader, test_data_loader)
