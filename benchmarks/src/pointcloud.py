@@ -1,5 +1,3 @@
-from model.src.settings import Settings
-from model.src.network import Net
 import pandas as pd
 import wandb
 import torch
@@ -8,6 +6,8 @@ from torch.utils.data import DataLoader
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from model.src import logging_util
+from model.src.settings import Settings
+from model.src.network import Net
 
 NUM_STEPS = 5000
 BATCH_SIZE = 500
