@@ -18,12 +18,12 @@ class SynapticUpdateType(Enum):
     BACKWARD = 3
 
 
-class MovingAverageLIF():
+class MovingAverageLIF:
     def __init__(self, batch_size: int, layer_size: int, beta: float, device: torch.device, tau_mean: float = TAU_MEAN,
                  tau_var: float = TAU_VAR) -> None:
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=tau_mean, batch_size=batch_size, device=device, data_size=layer_size)
-        self.variance_moving_average = VarianceMovingAverage(device=device, tau_var=tau_var)
+            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size, device=device)
+        self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var, device=device)
         self.neuron_layer = LIF(beta)
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
@@ -50,9 +50,9 @@ class MovingAverageLIF():
         return self.variance_moving_average.tracked_value()
 
 
-class DoubleExponentialFilter(nn.Module):
+class DoubleExponentialFilter:
 
-    def __init__(self, tau_rise: float, tau_fall: float) -> None:
+    def __init__(self, tau_rise: float, tau_fall: float, device: torch.device) -> None:
         """
         tau_rise:
          * This controls how quickly the filter responds to an increase in the
@@ -83,24 +83,20 @@ class DoubleExponentialFilter(nn.Module):
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
         """
-        super().__init__()
-
-        self.rise: torch.Tensor = torch.empty(0)
-        self.fall: torch.Tensor = torch.empty(0)
+        self.rise: Optional[torch.Tensor] = None
+        self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
-
-        self.register_buffer('rise_', self.rise)
-        self.register_buffer('fall_', self.fall)
+        self.device = device
 
     def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
-        if self.rise.numel() == 0:
+        if self.rise == None:
             # Initialize rise based on the first error received
-            self.rise = torch.zeros_like(value)
+            self.rise = torch.zeros_like(value).to(self.device)
 
-        if self.fall.numel() == 0:
+        if self.fall == None:
             # Initialize fall based on the first error received
-            self.fall = torch.zeros_like(value)
+            self.fall = torch.zeros_like(value).to(self.device)
 
         # Apply the exponential decay to the rise state and add the error
         decay_factor_rise = math.exp(-dt / self.tau_rise)
@@ -113,18 +109,13 @@ class DoubleExponentialFilter(nn.Module):
         return self.fall
 
 
-class ExcitatorySynapseFilterGroup(nn.Module):
+class ExcitatorySynapseFilterGroup:
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, device: torch.device) -> None:
 
-        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
-        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON)
-        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
-
-        self.module_list = nn.ModuleList([
-            self.first_term_alpha, self.first_term_epsilon, self.second_term_alpha
-        ])
+        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
+        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON, device=device)
+        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
 
 
 class SpikeMovingAverage:
@@ -149,7 +140,7 @@ class SpikeMovingAverage:
         self.spike_rec: Deque[torch.Tensor] = deque(maxlen=MAX_RETAINED_SPIKES)
         for _ in range(MAX_RETAINED_SPIKES):
             self.spike_rec.append(torch.zeros(
-                batch_size, data_size).to(device))
+                batch_size, data_size).to(device=device))
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
         self.spike_rec.append(spike)
