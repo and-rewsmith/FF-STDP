@@ -6,9 +6,11 @@ from model.src.util import InhibitoryPlasticityTrace, SpikeMovingAverage, Double
 
 # TODO: consider testing with real tau constants and dt values
 
+device = torch.device("cpu")
+
 
 def test_temporal_filter() -> None:
-    tf = DoubleExponentialFilter(tau_rise=1, tau_fall=1)
+    tf = DoubleExponentialFilter(device=device, tau_rise=1, tau_fall=1)
 
     # Initial apply since temporal filter is second order
     tf.apply(value=torch.Tensor([1]), dt=1)
@@ -23,7 +25,7 @@ def test_temporal_filter() -> None:
 
 
 def test_spike_moving_average() -> None:
-    sma = SpikeMovingAverage(batch_size=1, tau_mean=1, data_size=1)
+    sma = SpikeMovingAverage(device=device, batch_size=1, tau_mean=1, data_size=1)
 
     # Apply a single spike
     assert sma.apply(spike=torch.Tensor([1]), dt=1).item() == 0.6321205496788025
@@ -38,8 +40,8 @@ def test_spike_moving_average() -> None:
 def test_variance_moving_average() -> None:
     tau_mean = 10
     tau_var = 10
-    sma = SpikeMovingAverage(batch_size=1, data_size=1, tau_mean=tau_mean)
-    vma = VarianceMovingAverage(tau_var)
+    sma = SpikeMovingAverage(device=device, batch_size=1, data_size=1, tau_mean=tau_mean)
+    vma = VarianceMovingAverage(device=device, tau_var=tau_var)
 
     # Apply spikes to the moving average
     spike = torch.Tensor([2])
@@ -70,7 +72,7 @@ def test_variance_moving_average() -> None:
 
 def test_inhibitory_plasticity_trace() -> None:
     trace_shape: Tuple[int, int] = (1, 1)
-    ipt = InhibitoryPlasticityTrace(trace_shape)
+    ipt = InhibitoryPlasticityTrace(device=device, trace_shape=trace_shape)
 
     # Apply a single spike
     assert ipt.apply(spike=torch.Tensor([[1]]), dt=0.1).item() == 1
