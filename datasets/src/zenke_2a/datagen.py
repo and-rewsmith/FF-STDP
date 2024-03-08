@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 
 
 # TODO: can use guassian mixture model to generate data
-def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 5000, num_clusters: int = 2,
+def generate_sequential_dataset(num_samples: int = 500, num_datapoints: int = 5000, num_clusters: int = 2,
                                 cluster_switch_prob: float = 0.05, cluster_spread: float = 0.5) -> pd.DataFrame:
     """
     Generates a sequential dataset with rare abrupt switches between clusters, organized into batches,
@@ -23,7 +24,7 @@ def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 50
     """
     data = []  # List to store data before converting to DataFrame
 
-    for sample in range(num_samples):
+    for sample in tqdm(range(num_samples), desc='Generating samples'):
         current_cluster = np.random.randint(0, num_clusters)
         for i in range(num_datapoints):
             # Decide whether to switch clusters

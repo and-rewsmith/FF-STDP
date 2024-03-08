@@ -187,6 +187,7 @@ class Layer(nn.Module):
         logging.debug(
             f"forward weights shape: {self.forward_weights.weight.shape}")
         logging.debug(f"forward weights: {self.forward_weights.weight}")
+        print(f"data shape: {self.data.shape}")
 
         def reduce_feature_dims_with_mask(tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
             return tensor[mask.unsqueeze(0).expand(self.layer_settings.batch_size, -1).bool()]
@@ -196,11 +197,13 @@ class Layer(nn.Module):
         inhibitory_mem = reduce_feature_dims_with_mask(mem, self.inhibitory_mask_vec)
         excitatory_spike = reduce_feature_dims_with_mask(spike, self.excitatory_mask_vec)
         inhibitory_spike = reduce_feature_dims_with_mask(spike, self.inhibitory_mask_vec)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem.mean()}, step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem.mean()}, step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike.mean()},
+        wandb.log(
+            {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
+        wandb.log(
+            {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
                   step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike.mean()},
+        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
                   step=self.forward_counter)
         wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]}, step=self.forward_counter)
         wandb.log({f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]}, step=self.forward_counter)
