@@ -1,12 +1,18 @@
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
 
+NUM_TIMESTEPS = 100
+PLANNED_BATCH_SIZE = 1
 
 # TODO: can use guassian mixture model to generate data
-def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 5000, num_clusters: int = 2,
-                                cluster_switch_prob: float = 0.05, cluster_spread: float = 0.5) -> pd.DataFrame:
+
+
+def generate_sequential_dataset(num_samples: int = PLANNED_BATCH_SIZE, num_datapoints: int = NUM_TIMESTEPS,
+                                num_clusters: int = 2, cluster_switch_prob: float = 0.05,
+                                cluster_spread: float = 0.5) -> pd.DataFrame:
     """
     Generates a sequential dataset with rare abrupt switches between clusters, organized into batches,
     with a defined number of samples per batch.
@@ -23,7 +29,7 @@ def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 50
     """
     data = []  # List to store data before converting to DataFrame
 
-    for sample in range(num_samples):
+    for sample in tqdm(range(num_samples), desc='Generating samples'):
         current_cluster = np.random.randint(0, num_clusters)
         for i in range(num_datapoints):
             # Decide whether to switch clusters
@@ -51,6 +57,8 @@ def generate_sequential_dataset(num_samples: int = 100, num_datapoints: int = 50
 if __name__ == "__main__":
     sequential_data = generate_sequential_dataset()
     sequential_data.to_csv(TRAIN_DATA_PATH, index=False)
+    print(f"Sequential dataset saved to {TRAIN_DATA_PATH}")
 
     test_sequential_data = generate_sequential_dataset()
     test_sequential_data.to_csv(TEST_DATA_PATH, index=False)
+    print(f"Sequential test dataset saved to {TEST_DATA_PATH}")
