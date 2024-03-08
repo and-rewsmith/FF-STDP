@@ -58,5 +58,5 @@ if __name__ == "__main__":
     test_data_loader = DataLoader(
         test_sequential_dataset, batch_size=10, shuffle=False)
 
-    net = Net(settings)
+    net = Net(settings).to(device=settings.device)
     net.process_data_online(train_data_loader, test_data_loader)

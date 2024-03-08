@@ -3,7 +3,9 @@ import math
 from collections import deque
 from typing import Deque, Optional, Tuple
 
+from torch import nn
 import torch
+
 from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, \
     TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 
@@ -48,9 +50,9 @@ class MovingAverageLIF():
         return self.variance_moving_average.tracked_value()
 
 
-class DoubleExponentialFilter:
+class DoubleExponentialFilter(nn.Module):
 
-    def __init__(self, tau_rise: float, tau_fall: float, device: torch.device) -> None:
+    def __init__(self, tau_rise: float, tau_fall: float) -> None:
         """
         tau_rise:
          * This controls how quickly the filter responds to an increase in the
@@ -81,20 +83,24 @@ class DoubleExponentialFilter:
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
         """
-        self.device = device
-        self.rise: Optional[torch.Tensor] = None
-        self.fall: Optional[torch.Tensor] = None
+        super().__init__()
+
+        self.rise: torch.Tensor = torch.empty(0)
+        self.fall: torch.Tensor = torch.empty(0)
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
 
-    def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
-        if self.rise is None:
-            # Initialize rise based on the first error received
-            self.rise = torch.zeros_like(value).to(self.device)
+        self.register_buffer('rise_', self.rise)
+        self.register_buffer('fall_', self.fall)
 
-        if self.fall is None:
+    def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
+        if self.rise.numel() == 0:
+            # Initialize rise based on the first error received
+            self.rise = torch.zeros_like(value)
+
+        if self.fall.numel() == 0:
             # Initialize fall based on the first error received
-            self.fall = torch.zeros_like(value).to(self.device)
+            self.fall = torch.zeros_like(value)
 
         # Apply the exponential decay to the rise state and add the error
         decay_factor_rise = math.exp(-dt / self.tau_rise)
@@ -107,12 +113,18 @@ class DoubleExponentialFilter:
         return self.fall
 
 
-class ExcitatorySynapseFilterGroup:
+class ExcitatorySynapseFilterGroup(nn.Module):
 
-    def __init__(self, device: torch.device) -> None:
-        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
-        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON, device=device)
-        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
+        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON)
+        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
+
+        self.module_list = nn.ModuleList([
+            self.first_term_alpha, self.first_term_epsilon, self.second_term_alpha
+        ])
 
 
 class SpikeMovingAverage:
