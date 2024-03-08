@@ -3,7 +3,9 @@ import math
 from collections import deque
 from typing import Deque, Optional, Tuple
 
+from torch import nn
 import torch
+
 from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, \
     TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 
@@ -16,12 +18,12 @@ class SynapticUpdateType(Enum):
     BACKWARD = 3
 
 
-class MovingAverageLIF():
+class MovingAverageLIF:
     def __init__(self, batch_size: int, layer_size: int, beta: float, device: torch.device, tau_mean: float = TAU_MEAN,
                  tau_var: float = TAU_VAR) -> None:
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=tau_mean, batch_size=batch_size, device=device, data_size=layer_size)
-        self.variance_moving_average = VarianceMovingAverage(device=device, tau_var=tau_var)
+            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size, device=device)
+        self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var, device=device)
         self.neuron_layer = LIF(beta)
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
@@ -81,11 +83,11 @@ class DoubleExponentialFilter:
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
         """
-        self.device = device
         self.rise: Optional[torch.Tensor] = None
         self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
+        self.device = device
 
     def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.rise is None:
@@ -110,6 +112,7 @@ class DoubleExponentialFilter:
 class ExcitatorySynapseFilterGroup:
 
     def __init__(self, device: torch.device) -> None:
+
         self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
         self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON, device=device)
         self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
@@ -137,7 +140,7 @@ class SpikeMovingAverage:
         self.spike_rec: Deque[torch.Tensor] = deque(maxlen=MAX_RETAINED_SPIKES)
         for _ in range(MAX_RETAINED_SPIKES):
             self.spike_rec.append(torch.zeros(
-                batch_size, data_size).to(device))
+                batch_size, data_size).to(device=device))
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
         self.spike_rec.append(spike)
