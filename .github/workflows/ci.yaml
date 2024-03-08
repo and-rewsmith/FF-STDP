@@ -25,4 +25,5 @@ jobs:
         pip install -r scripts/devops/requirements.txt
     - name: Run CI test
       run: ./scripts/devops/unit.sh
+    - name: Run smoke test
       run: ./scripts/devops/smoke.sh
