@@ -24,9 +24,6 @@ class SequentialDataset(Dataset):
                  planned_batch_size: int = PLANNED_BATCH_SIZE) -> None:
         """
         Initializes the dataset by loading the data from a CSV file.
-
-        Parameters:
-        csv_file (str): Path to the CSV file containing the generated data.
         """
 
         # check the dims of this dataframe and if the dataframe dims don't
@@ -36,7 +33,8 @@ class SequentialDataset(Dataset):
         sample_data = sample_data[['x', 'y']].to_numpy()
         sample_tensor = torch.tensor(sample_data, dtype=torch.float)
 
-        if len(dataframe_tmp) % planned_batch_size != 0 or sample_tensor.shape[0] != num_timesteps:
+        # NOTE: single batch verification
+        if len(dataframe_tmp) / num_timesteps != planned_batch_size or sample_tensor.shape[0] != num_timesteps:
             logging.warning(
                 "Dataframe dimensions do not match the planned batch size or number of timesteps. Regenerating data...")
             dataframe_tmp = generate_sequential_dataset(num_samples=planned_batch_size, num_datapoints=num_timesteps)
@@ -60,12 +58,6 @@ class SequentialDataset(Dataset):
     def __getitem__(self, idx: Union[int, List[int], torch.Tensor]) -> torch.Tensor:
         """
         Retrieves a sample from the dataset at the specified index.
-
-        Parameters:
-        idx (int): Index of the sample to retrieve.
-
-        Returns:
-        torch.Tensor: Tensor containing all datapoints of the requested sample.
         """
         if torch.is_tensor(idx):
             idx = idx.tolist()  # type: ignore[union-attr]

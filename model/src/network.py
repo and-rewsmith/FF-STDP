@@ -23,7 +23,8 @@ class Net(nn.Module):
             layer_id = i
             layer_settings = LayerSettings(layer_id,
                                            prev_size, size, next_size,
-                                           settings.batch_size, settings.learning_rate, settings.data_size)
+                                           settings.batch_size, settings.learning_rate, settings.data_size,
+                                           settings.device)
             network_layer_settings.append(layer_settings)
 
         # make layers
@@ -43,6 +44,8 @@ class Net(nn.Module):
     def process_data_online(self, train_loader: DataLoader, test_loader: DataLoader) -> None:
         for epoch in range(self.settings.epochs):
             for i, batch in enumerate(train_loader):
+                batch = batch.to(self.settings.device)
+
                 # permute to (num_steps, batch_size, data_size)
                 batch = batch.permute(1, 0, 2)
 
@@ -62,4 +65,4 @@ class Net(nn.Module):
                         layer.train_synapses(spk, batch[timestep])
 
                 # TODO: remove when network is stabilized
-                raise NotImplementedError("Network is not yet stabilized for multi batch")
+                return

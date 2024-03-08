@@ -17,11 +17,11 @@ class SynapticUpdateType(Enum):
 
 
 class MovingAverageLIF():
-    def __init__(self, batch_size: int, layer_size: int, beta: float, tau_mean: float = TAU_MEAN,
+    def __init__(self, batch_size: int, layer_size: int, beta: float, device: torch.device, tau_mean: float = TAU_MEAN,
                  tau_var: float = TAU_VAR) -> None:
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size)
-        self.variance_moving_average = VarianceMovingAverage(tau_var=tau_var)
+            tau_mean=tau_mean, batch_size=batch_size, device=device, data_size=layer_size)
+        self.variance_moving_average = VarianceMovingAverage(device=device, tau_var=tau_var)
         self.neuron_layer = LIF(beta)
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
@@ -50,7 +50,7 @@ class MovingAverageLIF():
 
 class DoubleExponentialFilter:
 
-    def __init__(self, tau_rise: float, tau_fall: float) -> None:
+    def __init__(self, tau_rise: float, tau_fall: float, device: torch.device) -> None:
         """
         tau_rise:
          * This controls how quickly the filter responds to an increase in the
@@ -81,6 +81,7 @@ class DoubleExponentialFilter:
          TODO: Concern here is that we are initializing the rise and fall states
                 with zeros, which might not be the best approach.
         """
+        self.device = device
         self.rise: Optional[torch.Tensor] = None
         self.fall: Optional[torch.Tensor] = None
         self.tau_rise = tau_rise
@@ -89,11 +90,11 @@ class DoubleExponentialFilter:
     def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
-            self.rise = torch.zeros_like(value)
+            self.rise = torch.zeros_like(value).to(self.device)
 
         if self.fall is None:
             # Initialize fall based on the first error received
-            self.fall = torch.zeros_like(value)
+            self.fall = torch.zeros_like(value).to(self.device)
 
         # Apply the exponential decay to the rise state and add the error
         decay_factor_rise = math.exp(-dt / self.tau_rise)
@@ -108,15 +109,15 @@ class DoubleExponentialFilter:
 
 class ExcitatorySynapseFilterGroup:
 
-    def __init__(self) -> None:
-        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
-        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON)
-        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA)
+    def __init__(self, device: torch.device) -> None:
+        self.first_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
+        self.first_term_epsilon = DoubleExponentialFilter(TAU_RISE_EPSILON, TAU_FALL_EPSILON, device=device)
+        self.second_term_alpha = DoubleExponentialFilter(TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
 
 
 class SpikeMovingAverage:
 
-    def __init__(self, batch_size: int, data_size: int, tau_mean: float = TAU_MEAN) -> None:
+    def __init__(self, batch_size: int, data_size: int, device: torch.device, tau_mean: float = TAU_MEAN) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -130,19 +131,20 @@ class SpikeMovingAverage:
         TODO: Concern here is that we are initializing the state with zeros,
                 which might not be the best approach.
         """
+        self.device = device
         self.mean: Optional[torch.Tensor] = None
         self.tau_mean = tau_mean
         self.spike_rec: Deque[torch.Tensor] = deque(maxlen=MAX_RETAINED_SPIKES)
         for _ in range(MAX_RETAINED_SPIKES):
             self.spike_rec.append(torch.zeros(
-                batch_size, data_size))
+                batch_size, data_size).to(device))
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
         self.spike_rec.append(spike)
 
         if self.mean is None:
             # Initialize mean based on the first spike received
-            self.mean = torch.zeros_like(spike)
+            self.mean = torch.zeros_like(spike).to(self.device)
 
         # Apply the exponential decay to the mean state and add the new spike value
         decay_factor = math.exp(-dt / self.tau_mean)
@@ -159,7 +161,7 @@ class SpikeMovingAverage:
 
 class VarianceMovingAverage:
 
-    def __init__(self, tau_var: float = TAU_VAR) -> None:
+    def __init__(self, device: torch.device, tau_var: float = TAU_VAR) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -175,11 +177,12 @@ class VarianceMovingAverage:
         """
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
+        self.device = device
 
     def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor, dt: float = DT) -> torch.Tensor:
         if self.variance is None:
             # Initialize variance based on the first spike received
-            self.variance = torch.zeros_like(spike)
+            self.variance = torch.zeros_like(spike).to(self.device)
 
         # Apply the exponential decay to the variance state and add the squared deviation
         decay_factor = math.exp(-dt / self.tau_var)
@@ -198,14 +201,15 @@ class VarianceMovingAverage:
 
 class InhibitoryPlasticityTrace:
 
-    def __init__(self, trace_shape: Tuple[int, int], tau_stdp: float = TAU_STDP) -> None:
+    def __init__(self, trace_shape: Tuple[int, int], device: torch.device, tau_stdp: float = TAU_STDP) -> None:
         """
         Zenke's paper uses a tau_stdp of 20ms.
 
         TODO: Concern here is that we are initializing the state with zeros,
                 which might not be the best approach.
         """
-        self.trace = torch.zeros(trace_shape)
+        self.device = device
+        self.trace = torch.zeros(trace_shape).to(device)
         self.tau_stdp: float = tau_stdp
 
     def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:

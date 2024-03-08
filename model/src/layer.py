@@ -29,34 +29,36 @@ class Layer(nn.Module):
 
         # weights from prev layer to this layer
         self.forward_weights = nn.Linear(
-            layer_settings.prev_size, layer_settings.size)
+            layer_settings.prev_size, layer_settings.size).to(self.layer_settings.device)
         torch.nn.init.uniform_(self.forward_weights.weight, a=0.1, b=1.0)
 
         # weights from next layer to this layer
-        self.backward_weights = nn.Linear(layer_settings.next_size, layer_settings.size)
+        self.backward_weights = nn.Linear(layer_settings.next_size, layer_settings.size).to(self.layer_settings.device)
         torch.nn.init.uniform_(self.backward_weights.weight, a=0.1, b=1.0)
 
         # weights from this layer to this layer
-        self.recurrent_weights = nn.Linear(layer_settings.size, layer_settings.size)
+        self.recurrent_weights = nn.Linear(layer_settings.size, layer_settings.size).to(self.layer_settings.device)
         torch.nn.init.uniform_(self.recurrent_weights.weight, a=0.1, b=1.0)
 
-        self.inhibitory_mask_vec = inhibitory_mask_vec(layer_settings.size, PERCENTAGE_INHIBITORY)
-        self.excitatory_mask_vec = (~self.inhibitory_mask_vec.bool()).int().float()
+        self.inhibitory_mask_vec = inhibitory_mask_vec(
+            layer_settings.size, PERCENTAGE_INHIBITORY).to(self.layer_settings.device)
+        self.excitatory_mask_vec = (~self.inhibitory_mask_vec.bool()).int(
+        ).float().to(self.layer_settings.device).to(self.layer_settings.device)
         # check that inhib is opposite of excit
         assert torch.all(self.inhibitory_mask_vec + self.excitatory_mask_vec == 1)
 
         self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                    beta=DECAY_BETA)
+                                    beta=DECAY_BETA, device=layer_settings.device)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
-        self.forward_filter_group = ExcitatorySynapseFilterGroup()
-        self.recurrent_filter_group = ExcitatorySynapseFilterGroup()
-        self.backward_filter_group = ExcitatorySynapseFilterGroup()
+        self.forward_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
+        self.recurrent_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
+        self.backward_filter_group = ExcitatorySynapseFilterGroup(device=self.layer_settings.device)
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
-        self.inhibitory_trace = InhibitoryPlasticityTrace(trace_shape=trace_shape)
+        self.inhibitory_trace = InhibitoryPlasticityTrace(device=self.layer_settings.device, trace_shape=trace_shape)
 
         self.forward_counter = 0
 
@@ -187,7 +189,6 @@ class Layer(nn.Module):
         logging.debug(
             f"forward weights shape: {self.forward_weights.weight.shape}")
         logging.debug(f"forward weights: {self.forward_weights.weight}")
-        print(f"data shape: {self.data.shape}")
 
         def reduce_feature_dims_with_mask(tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
             return tensor[mask.unsqueeze(0).expand(self.layer_settings.batch_size, -1).bool()]
@@ -221,7 +222,7 @@ class Layer(nn.Module):
             non_zero_rows = excitatory_masked_weight.any(dim=1)
             # Filter out rows that are all zeros
             excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
-            assert excitatory_masked_weight.shape == (1, self.layer_settings.data_size)
+            assert excitatory_masked_weight.shape == (self.layer_settings.size / 2, self.layer_settings.data_size)
 
             wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
                       step=self.forward_counter)
@@ -259,7 +260,7 @@ class Layer(nn.Module):
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
 
         if from_layer is None:
-            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size)
+            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size).to(self.layer_settings.device)
         else:
             # flip the mask as this is for excitatory connections
             mask = (~from_layer.inhibitory_mask_vec.bool()).int()
@@ -432,6 +433,4 @@ class Layer(nn.Module):
         if self.prev_layer is not None:
             self.train_inhibitory_from_layer(SynapticUpdateType.FORWARD, spike, self.prev_layer)
 
-        # TODO: remove this when learning rule is stable
         logging.info(f"trained layer {self.layer_settings.layer_id} synapses")
-        input()
