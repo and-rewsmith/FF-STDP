@@ -44,14 +44,21 @@ if __name__ == "__main__":
         }
     )
 
-    train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
+    try:
+        train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
+    except FileNotFoundError:
+        train_dataframe = None
+
     train_sequential_dataset = SequentialDataset(
         DatasetType.TRAIN,
         train_dataframe, num_timesteps=settings.num_steps, planned_batch_size=settings.batch_size)
     train_data_loader = DataLoader(
         train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
-    test_dataframe = pd.read_csv(TEST_DATA_PATH)
+    try:
+        test_dataframe = pd.read_csv(TEST_DATA_PATH)
+    except FileNotFoundError:
+        test_dataframe = None
     test_sequential_dataset = SequentialDataset(
         DatasetType.TEST,
         test_dataframe, num_timesteps=settings.num_steps, planned_batch_size=settings.batch_size)
