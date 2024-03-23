@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from model.src.constants import LEARNING_RATE
+from model.src.constants import DT, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, LAYER_SPARSITY, LEARNING_RATE, PERCENTAGE_INHIBITORY
 from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
@@ -222,6 +222,11 @@ if __name__ == "__main__":
         learning_rate=LEARNING_RATE,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        dt=DT,
+        percentage_inhibitory=PERCENTAGE_INHIBITORY,
+        exc_to_inhib_conn_c=EXC_TO_INHIB_CONN_C,
+        exc_to_inhib_conn_sigma_squared=EXC_TO_INHIB_CONN_SIGMA_SQUARED,
+        layer_sparsity=LAYER_SPARSITY,
         device=torch.device("cpu")
     )
 

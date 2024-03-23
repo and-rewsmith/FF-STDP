@@ -23,7 +23,7 @@ def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
 
 class SparseLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int, layer_settings: LayerSettings,
-                 synaptic_update_type: SynapticUpdateType, bias: bool = False, sparsity: float = LAYER_SPARSITY):
+                 synaptic_update_type: SynapticUpdateType, bias: bool = False):
         """
         Initialize the SparseLinear module.
 
@@ -38,7 +38,7 @@ class SparseLinear(nn.Module):
         self.out_features = out_features
         self.linear = nn.Linear(in_features, out_features, bias=bias)
         torch.nn.init.uniform_(self.linear.weight, a=0.1, b=1.0)
-        self.sparsity = sparsity
+        self.sparsity = layer_settings.layer_sparsity
         self.mask: Optional[torch.Tensor] = None
         self.layer_settings = layer_settings
         self.synaptic_update_type = synaptic_update_type
@@ -87,16 +87,15 @@ class SparseLinear(nn.Module):
         self.mask = mask
 
     def __gaussian_connection_probability_matrix(
-            self, c: float = EXC_TO_INHIB_CONN_C,
-            sigma_squared: float = EXC_TO_INHIB_CONN_SIGMA_SQUARED) -> torch.Tensor:
+            self) -> torch.Tensor:
         indices_i = torch.arange(self.out_features, dtype=torch.float32).unsqueeze(
             1).expand(-1, self.in_features)
         indices_j = torch.arange(
             self.in_features, dtype=torch.float32).unsqueeze(0).expand(
             self.out_features, -1)
 
-        pre_exp = -1 * (indices_j - c * (indices_i +
-                        indices_j / c - indices_j)) ** 2 / sigma_squared
+        pre_exp = -1 * (indices_j - self.layer_settings.exc_to_inhib_conn_c * (indices_i +
+                        indices_j / self.layer_settings.exc_to_inhib_conn_c - indices_j)) ** 2 / self.layer_settings.exc_to_inhib_conn_sigma_squared
         return torch.exp(pre_exp)
 
     def set_mask(self, from_layer: 'Layer', to_layer: 'Layer') -> None:
@@ -148,7 +147,7 @@ class Layer(nn.Module):
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
         self.inhibitory_mask_vec_ = inhibitory_mask_vec(
-            layer_settings.size, PERCENTAGE_INHIBITORY)
+            layer_settings.size, layer_settings.percentage_inhibitory)
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
         ).float()
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
@@ -160,7 +159,7 @@ class Layer(nn.Module):
             self.excitatory_mask_vec == 1)
 
         self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                    beta=DECAY_BETA, device=self.layer_settings.device)
+                                    beta=DECAY_BETA, dt=layer_settings.dt, device=self.layer_settings.device)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
@@ -467,9 +466,9 @@ class Layer(nn.Module):
                 1)
             first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
             first_term_epsilon = filter_group.first_term_epsilon.apply(
-                first_term_no_filter)
+                first_term_no_filter, self.layer_settings.dt)
             first_term_alpha = filter_group.first_term_alpha.apply(
-                first_term_epsilon)
+                first_term_epsilon, self.layer_settings.dt)
 
             # assert shapes
             assert f_prime_u_i.shape == (
@@ -503,7 +502,7 @@ class Layer(nn.Module):
             second_term_no_filter = second_term_no_filter.unsqueeze(
                 2).expand(-1, -1, from_layer_size)
             second_term_alpha = filter_group.second_term_alpha.apply(
-                second_term_no_filter)
+                second_term_no_filter, self.layer_settings.dt)
 
             # assert shapes
             assert second_term_deviation.shape == (
@@ -569,7 +568,7 @@ class Layer(nn.Module):
             self.layer_settings.size,
             from_layer.layer_settings.size)
 
-        self.inhibitory_trace.apply(spike)
+        self.inhibitory_trace.apply(spike, self.layer_settings.dt)
 
         with torch.no_grad():
             x_i = self.inhibitory_trace.tracked_value().unsqueeze(

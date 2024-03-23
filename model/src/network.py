@@ -26,6 +26,8 @@ class Net(nn.Module):
             layer_settings = LayerSettings(layer_id,
                                            prev_size, size, next_size,
                                            settings.batch_size, settings.learning_rate, settings.data_size,
+                                           settings.dt, settings.percentage_inhibitory, settings.exc_to_inhib_conn_c,
+                                           settings.exc_to_inhib_conn_sigma_squared, settings.layer_sparsity,
                                            settings.device)
             network_layer_settings.append(layer_settings)
 
