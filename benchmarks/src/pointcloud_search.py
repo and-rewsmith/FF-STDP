@@ -1,4 +1,7 @@
 import random
+import subprocess
+import time
+
 import pandas as pd
 import wandb
 import torch
@@ -31,22 +34,24 @@ def bench_many_seeds(running_log, layer_sizes, learning_rate, dt, percentage_inh
     exc_to_inhib_conn_sigma_squared: {exc_to_inhib_conn_sigma_squared}
     layer_sparsity: {layer_sparsity}
     """
-    running_log.write(f"benching many seeds for:\n{run_settings}")
+    running_log.write(f"{run_settings}")
+    running_log.flush()
     pass_count = 0
     total_count = 0
     for _ in range(10):
-        is_pass = bench_specific_configuration(running_log,
-                                               layer_sizes, learning_rate, dt, percentage_inhibitory,
-                                               exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity)
+        is_pass = bench_specific_seed(running_log,
+                                      layer_sizes, learning_rate, dt, percentage_inhibitory,
+                                      exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity)
         if is_pass:
             pass_count += 1
         total_count += 1
 
     running_log.write(
         run_settings + f"\npass_rate: {pass_count / total_count}\n\n===============================================================================")
+    running_log.flush()
 
 
-def bench_specific_configuration(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity):
+def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity):
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
@@ -57,6 +62,11 @@ def bench_specific_configuration(running_log, layer_sizes, learning_rate, dt, pe
         learning_rate=learning_rate,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        dt=dt,
+        percentage_inhibitory=percentage_inhibitory,
+        exc_to_inhib_conn_c=exc_to_inhib_conn_c,
+        exc_to_inhib_conn_sigma_squared=exc_to_inhib_conn_sigma_squared,
+        layer_sparsity=layer_sparsity,
         device=torch.device("cpu")
     )
 
@@ -83,8 +93,6 @@ def bench_specific_configuration(running_log, layer_sizes, learning_rate, dt, pe
         train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
-    visualizer = NetworkVisualizer(net)
-    visualizer.update()
 
     # figure out what the excitatory mask is, find that neuron, then find the
     # weights for that neuron
@@ -109,6 +117,7 @@ def bench_specific_configuration(running_log, layer_sizes, learning_rate, dt, pe
     ---------------------------------
     """
     running_log.write(message)
+    running_log.flush()
 
     return is_pass
 
@@ -119,5 +128,24 @@ if __name__ == "__main__":
 
     set_logging()
 
-    running_log = open("running_log.txt", "w")
-    bench_many_seeds(running_log)
+    layer_sizes_options = [[2, 5], [2, 10, 10], [2, 10, 10, 10]]
+    learning_rate_options = [0.01, 0.001, 0.0001]
+    dt_options = [1, 0.1, 0.01, 0.001]
+    percentage_inhibitory_options = [60, 50, 40, 30]
+    exc_to_inhib_conn_c_options = [0.25, 0.5, 0.75]
+    exc_to_inhib_conn_sigma_squared_options = [1, 5, 10, 20, 40, 60]
+    layer_sparsity_options = [0.1, 0.3, 0.5, 0.7, 0.9]
+
+    while True:
+        running_log = open("running_log.log", "w")
+        layer_sizes = random.choice(layer_sizes_options)
+        learning_rate = random.choice(learning_rate_options)
+        dt = random.choice(dt_options)
+        percentage_inhibitory = random.choice(percentage_inhibitory_options)
+        exc_to_inhib_conn_c = random.choice(exc_to_inhib_conn_c_options)
+        exc_to_inhib_conn_sigma_squared = random.choice(
+            exc_to_inhib_conn_sigma_squared_options)
+        layer_sparsity = random.choice(layer_sparsity_options)
+
+        bench_many_seeds(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory,
+                         exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity)

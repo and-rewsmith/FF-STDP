@@ -376,13 +376,17 @@ class Layer(nn.Module):
             spike, self.excitatory_mask_vec)
         inhibitory_spike = reduce_feature_dims_with_mask(
             spike, self.inhibitory_mask_vec)
+
         wandb.log(
             {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
-        wandb.log(
-            {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+        try:
+            wandb.log(
+                {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+            wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
+                      step=self.forward_counter)
+        except IndexError:
+            pass
         wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
-                  step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
                   step=self.forward_counter)
         wandb.log(
             {
