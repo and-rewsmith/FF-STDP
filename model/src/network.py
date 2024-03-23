@@ -1,6 +1,8 @@
 import logging
+from typing import List
 
 from torch import nn
+import torch
 from torch.utils.data import DataLoader
 
 from model.src.layer import Layer
@@ -17,8 +19,8 @@ class Net(nn.Module):
         # make settings for each layer
         network_layer_settings = []
         for i, size in enumerate(settings.layer_sizes):
-            prev_size = settings.data_size if i == 0 else settings.layer_sizes[i-1]
-            next_size = settings.layer_sizes[i+1] if i < len(
+            prev_size = settings.data_size if i == 0 else settings.layer_sizes[i - 1]
+            next_size = settings.layer_sizes[i + 1] if i < len(
                 settings.layer_sizes) - 1 else 0
             layer_id = i
             layer_settings = LayerSettings(layer_id,
@@ -36,12 +38,28 @@ class Net(nn.Module):
         # connect layers
         for i, layer in enumerate(self.layers):
             if i > 0:
-                layer.set_prev_layer(self.layers[i-1])
+                layer.set_prev_layer(self.layers[i - 1])
             if i < len(network_layer_settings) - 1:
-                layer.set_next_layer(self.layers[i+1])
+                layer.set_next_layer(self.layers[i + 1])
+
+        # set masks
+        for i, layer in enumerate(self.layers):
+            layer.set_sparsity_masks()
+
+    def layer_activations(self) -> List[torch.Tensor]:
+        return [layer.retreive_activations() for layer in self.layers]
+
+    def process_data_single_timestep(self, data: torch.Tensor) -> None:
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                spk = layer.forward(data)
+            else:
+                spk = layer.forward()
+
+            layer.train_synapses(spk, data)
 
     # TODO: handle test data
-    def process_data_online(self, train_loader: DataLoader, test_loader: DataLoader) -> None:
+    def process_data_online(self, train_loader: DataLoader) -> None:
         for epoch in range(self.settings.epochs):
             for i, batch in enumerate(train_loader):
                 batch = batch.to(self.settings.device)

@@ -5,6 +5,7 @@ cycler==0.12.1
 filelock==3.9.0
 fonttools==4.47.0
 fsspec==2023.4.0
+gymnasium==0.29.0
 h5py==3.10.0
 idna==3.4
 Jinja2==3.1.2

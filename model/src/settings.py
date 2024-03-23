@@ -4,7 +4,6 @@ import torch
 class Settings:
     def __init__(self,
                  layer_sizes: list[int],
-                 num_steps: int,
                  data_size: int,
                  batch_size: int,
                  learning_rate: float,
@@ -12,7 +11,6 @@ class Settings:
                  encode_spike_trains: bool,
                  device: torch.device) -> None:
         self.layer_sizes = layer_sizes
-        self.num_steps = num_steps
         self.data_size = data_size
         self.batch_size = batch_size
         self.learning_rate = learning_rate

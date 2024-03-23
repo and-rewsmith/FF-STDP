@@ -3,15 +3,16 @@ import wandb
 import torch
 from torch.utils.data import DataLoader
 
-from datasets.src.zenke_2a.constants import TEST_DATA_PATH, TRAIN_DATA_PATH
+from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from model.src import logging_util
+from model.src.constants import LEARNING_RATE
 from model.src.settings import Settings
 from model.src.network import Net
 
 NUM_STEPS = 5000
 BATCH_SIZE = 500
-ENCODE_SPIKE_TRAINS = True
+ENCODE_SPIKE_TRAINS = False
 
 
 if __name__ == "__main__":
@@ -23,10 +24,9 @@ if __name__ == "__main__":
 
     settings = Settings(
         layer_sizes=[2],
-        num_steps=NUM_STEPS,
         data_size=2,
         batch_size=BATCH_SIZE,
-        learning_rate=0.01,
+        learning_rate=LEARNING_RATE,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
         device=torch.device("cpu")
@@ -51,19 +51,9 @@ if __name__ == "__main__":
 
     train_sequential_dataset = SequentialDataset(
         DatasetType.TRAIN,
-        train_dataframe, num_timesteps=settings.num_steps, planned_batch_size=settings.batch_size)
+        train_dataframe, num_timesteps=NUM_STEPS, planned_batch_size=settings.batch_size)
     train_data_loader = DataLoader(
         train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
-    try:
-        test_dataframe = pd.read_csv(TEST_DATA_PATH)
-    except FileNotFoundError:
-        test_dataframe = None
-    test_sequential_dataset = SequentialDataset(
-        DatasetType.TEST,
-        test_dataframe, num_timesteps=settings.num_steps, planned_batch_size=settings.batch_size)
-    test_data_loader = DataLoader(
-        test_sequential_dataset, batch_size=10, shuffle=False)
-
     net = Net(settings).to(device=settings.device)
-    net.process_data_online(train_data_loader, test_data_loader)
+    net.process_data_online(train_data_loader)

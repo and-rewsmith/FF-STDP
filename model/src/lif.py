@@ -54,7 +54,8 @@ class LIF(nn.Module):
     class SpikeOperator(torch.autograd.Function):
 
         @staticmethod
-        def forward(ctx: Any, mem: torch.Tensor, threshold: torch.Tensor) -> torch.Tensor:
+        def forward(ctx: Any, mem: torch.Tensor,
+                    threshold: torch.Tensor) -> torch.Tensor:
             input = mem - threshold
             spk = torch.zeros_like(input)
             spk[input > 0] = 1.0

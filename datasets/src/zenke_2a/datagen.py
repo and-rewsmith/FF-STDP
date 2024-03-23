@@ -10,9 +10,12 @@ PLANNED_BATCH_SIZE = 1
 # TODO: can use guassian mixture model to generate data
 
 
-def generate_sequential_dataset(num_samples: int = PLANNED_BATCH_SIZE, num_datapoints: int = NUM_TIMESTEPS,
-                                num_clusters: int = 2, cluster_switch_prob: float = 0.05,
-                                cluster_spread: float = 0.5) -> pd.DataFrame:
+def generate_sequential_dataset(
+        num_samples: int = PLANNED_BATCH_SIZE,
+        num_datapoints: int = NUM_TIMESTEPS,
+        num_clusters: int = 2,
+        cluster_switch_prob: float = 0.02,
+        cluster_spread: float = 0.5) -> pd.DataFrame:
     """
     Generates a sequential dataset with rare abrupt switches between clusters, organized into batches,
     with a defined number of samples per batch.
@@ -41,7 +44,7 @@ def generate_sequential_dataset(num_samples: int = PLANNED_BATCH_SIZE, num_datap
 
             # Generate the data point
             data_point = [sample, np.random.normal(
-                center_x, 0.1), np.random.normal(0, cluster_spread)]
+                center_x, 0.1), np.random.random()]
             data.append(data_point)
 
     # Convert list to DataFrame
