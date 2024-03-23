@@ -16,18 +16,6 @@ from model.src.visualizer import NetworkVisualizer
 THIS_TEST_NUM_SAMPLES = 100
 THIS_TEST_NUM_DATAPOINTS = 7000
 
-"""
-TODO:
-check the logic for weight filtering to see that the asserts are checking the correct weight
-stop spike encoding
-instead of normal sampling y, make y be random
-instead of sampling the x, make x be slowly varying
-
-remove clamping
-
-connectivity patterns
-"""
-
 
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
@@ -76,14 +64,10 @@ if __name__ == "__main__":
     # weights for that neuron
     layer: Layer = net.layers[0]
     weights = layer.forward_weights.weight()
-    print(net.layers[1].backward_weights.weight())
     mask = layer.excitatory_mask_vec
-    print(mask)
     mask_expanded = mask.unsqueeze(
         1).expand(-1, layer.layer_settings.data_size)
-    print(mask_expanded)
     weights_filtered_and_masked = weights[mask_expanded.bool()]
-    print(weights_filtered_and_masked)
     assert weights_filtered_and_masked[0] > 0.1
     assert weights_filtered_and_masked[1] > 0.1
 
@@ -91,6 +75,5 @@ if __name__ == "__main__":
 
     weights = layer.forward_weights.weight()
     weights_filtered_and_masked = weights[mask_expanded.bool()]
-    print(weights_filtered_and_masked)
     assert weights_filtered_and_masked[0] > 0.3
     assert weights_filtered_and_masked[1] < 0.05
