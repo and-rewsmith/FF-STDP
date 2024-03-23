@@ -8,3 +8,4 @@ pip install pytest
 
 python -m pytest -rP model/tests
 python -m pytest -rP datasets/tests
+python -m pytest -rP rl/benchmarks/tests
