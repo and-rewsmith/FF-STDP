@@ -11,7 +11,6 @@ from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.constants import DECAY_BETA, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 from model.src.layer import Layer
 from model.src.network import Net
 from model.src.settings import Settings
@@ -144,7 +143,10 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
     weights = layer.forward_weights.weight()
     weights_filtered_and_masked = weights[mask_expanded.bool()]
 
-    is_pass = weights_filtered_and_masked[0] > 0.3 and weights_filtered_and_masked[1] < 0.05
+    # is_pass = weights_filtered_and_masked[0] > 0.3 and weights_filtered_and_masked[1] < 0.05
+    # check to see if weights got potentiated
+    is_pass = weights_filtered_and_masked[0] - starting_weights_filtered_and_masked[0] > .1 and weights_filtered_and_masked[1] - \
+        starting_weights_filtered_and_masked[1] < -0.1
 
     message = f"""---------------------------------
     starting weights: {starting_weights_filtered_and_masked}
