@@ -13,7 +13,6 @@ from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from model.src.layer import Layer
-from model.src.logging_util import set_logging
 from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
@@ -28,7 +27,8 @@ def objective():
         config={
             "architecture": "initial",
             "dataset": "point-cloud",
-        }
+        },
+        allow_val_change=True  # TODOPRE: review this as it is silencing a warning
     )
 
     layer_sizes = wandb.config.layer_sizes

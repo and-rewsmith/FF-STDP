@@ -6,14 +6,14 @@ from torch.utils.data import DataLoader
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.constants import LEARNING_RATE
+from model.src.constants import DT, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, LAYER_SPARSITY, LEARNING_RATE, PERCENTAGE_INHIBITORY
 from model.src.layer import Layer
 from model.src.logging_util import set_logging
 from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
-THIS_TEST_NUM_SAMPLES = 100
+THIS_TEST_NUM_SAMPLES = 10
 THIS_TEST_NUM_DATAPOINTS = 7000
 
 
@@ -31,6 +31,11 @@ if __name__ == "__main__":
         learning_rate=LEARNING_RATE,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        dt=DT,
+        percentage_inhibitory=PERCENTAGE_INHIBITORY,
+        exc_to_inhib_conn_c=EXC_TO_INHIB_CONN_C,
+        exc_to_inhib_conn_sigma_squared=EXC_TO_INHIB_CONN_SIGMA_SQUARED,
+        layer_sparsity=LAYER_SPARSITY,
         device=torch.device("cpu")
     )
 
@@ -57,19 +62,27 @@ if __name__ == "__main__":
         train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
-    visualizer = NetworkVisualizer(net)
-    visualizer.update()
 
-    # figure out what the excitatory mask is, find that neuron, then find the
-    # weights for that neuron
+    # NOTE: uncomment if you want to visualize the network
+    # visualizer = NetworkVisualizer(net)
+    # visualizer.update()
+
+    # Figure out what the excitatory mask is, find that neuron, then find the
+    # weights for that neuron.
     layer: Layer = net.layers[0]
     weights = layer.forward_weights.weight()
     mask = layer.excitatory_mask_vec
     mask_expanded = mask.unsqueeze(
         1).expand(-1, layer.layer_settings.data_size)
-    weights_filtered_and_masked = weights[mask_expanded.bool()]
-    assert weights_filtered_and_masked[0] > 0.1
-    assert weights_filtered_and_masked[1] > 0.1
+    # This will eliminate all weights that are not connecting to an excitatory
+    # neuron, then collapse the dim down to 1. Since the original data is of
+    # size 2, the weights from x and y will be batched into segments of 2 from
+    # this 1d vector. For our purposes we can simply take the first index,
+    # representing the weight connecting the x datapoint to the first excitatory
+    # neuron.
+    starting_weights_filtered_and_masked = weights[mask_expanded.bool()]
+    assert starting_weights_filtered_and_masked[0] > 0.1
+    assert starting_weights_filtered_and_masked[1] > 0.1
 
     net.process_data_online(train_data_loader)
 
