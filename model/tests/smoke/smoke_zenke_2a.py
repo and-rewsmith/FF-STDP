@@ -19,7 +19,7 @@ THIS_TEST_NUM_DATAPOINTS = 7000
 
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
-    torch.manual_seed(1139)
+    torch.manual_seed(1138)
     torch.set_printoptions(precision=10, sci_mode=False)
 
     set_logging()
