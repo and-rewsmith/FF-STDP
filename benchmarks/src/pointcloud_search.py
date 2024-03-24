@@ -12,6 +12,7 @@ from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
+from model.src.constants import TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 from model.src.layer import Layer
 from model.src.network import Net
 from model.src.settings import Settings
@@ -90,6 +91,13 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
         exc_to_inhib_conn_c=exc_to_inhib_conn_c,
         exc_to_inhib_conn_sigma_squared=exc_to_inhib_conn_sigma_squared,
         layer_sparsity=layer_sparsity,
+        tau_mean=TAU_MEAN,
+        tau_var=TAU_VAR,
+        tau_stdp=TAU_STDP,
+        tau_rise_alpha=TAU_RISE_ALPHA,
+        tau_fall_alpha=TAU_FALL_ALPHA,
+        tau_rise_epsilon=TAU_RISE_EPSILON,
+        tau_fall_epsilon=TAU_FALL_EPSILON,
         device=torch.device("cpu")
     )
 
@@ -154,6 +162,13 @@ if __name__ == "__main__":
             "exc_to_inhib_conn_c": {"values": [0.25, 0.5, 0.75]},
             "exc_to_inhib_conn_sigma_squared": {"values": [1, 5, 10, 20, 40, 60]},
             "layer_sparsity": {"values": [0.1, 0.3, 0.5, 0.7, 0.9]},
+            "tau_mean": {"values": [30, 60, 300, 600, 1200, 1800]},
+            "tau_var": {"values": [0.01, 0.02, 0.05, 0.1]},
+            "tau_stdp": {"values": [0.01, 0.02, 0.05, 0.1]},
+            "tau_rise_alpha": {"values": [0.001, 0.002, 0.005, 0.01]},
+            "tau_fall_alpha": {"values": [0.005, 0.01, 0.02, 0.05]},
+            "tau_rise_epsilon": {"values": [0.002, 0.005, 0.01, 0.02]},
+            "tau_fall_epsilon": {"values": [0.01, 0.02, 0.05, 0.1]},
         },
     }
 

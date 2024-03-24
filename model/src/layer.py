@@ -6,8 +6,8 @@ import torch
 from torch import nn
 import wandb
 
-from model.src.constants import DECAY_BETA, DELTA, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, \
-    KAPPA, LAMBDA_HEBBIAN, LAYER_SPARSITY, PERCENTAGE_INHIBITORY, THETA_REST, XI, ZENKE_BETA
+from model.src.constants import DECAY_BETA, DELTA, \
+    KAPPA, LAMBDA_HEBBIAN, THETA_REST, XI, ZENKE_BETA
 from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
 from model.src.util import ExcitatorySynapseFilterGroup, InhibitoryPlasticityTrace, MovingAverageLIF, SynapticUpdateType
@@ -158,18 +158,17 @@ class Layer(nn.Module):
             self.inhibitory_mask_vec +
             self.excitatory_mask_vec == 1)
 
-        self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                    beta=DECAY_BETA, dt=layer_settings.dt, device=self.layer_settings.device)
+        self.lif = MovingAverageLIF(layer_settings)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
         self.forward_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
         self.recurrent_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
         self.backward_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(

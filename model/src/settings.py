@@ -14,6 +14,13 @@ class Settings:
                  exc_to_inhib_conn_c: float,
                  exc_to_inhib_conn_sigma_squared: float,
                  layer_sparsity: float,
+                 tau_mean: float,
+                 tau_var: float,
+                 tau_stdp: float,
+                 tau_rise_alpha: float,
+                 tau_fall_alpha: float,
+                 tau_rise_epsilon: float,
+                 tau_fall_epsilon: float,
                  device: torch.device) -> None:
         self.layer_sizes = layer_sizes
         self.data_size = data_size
@@ -26,14 +33,38 @@ class Settings:
         self.exc_to_inhib_conn_c = exc_to_inhib_conn_c
         self.exc_to_inhib_conn_sigma_squared = exc_to_inhib_conn_sigma_squared
         self.layer_sparsity = layer_sparsity
+        self.tau_mean = tau_mean
+        self.tau_var = tau_var
+        self.tau_stdp = tau_stdp
+        self.tau_rise_alpha = tau_rise_alpha
+        self.tau_fall_alpha = tau_fall_alpha
+        self.tau_rise_epsilon = tau_rise_epsilon,
+        self.tau_fall_epsilon = tau_fall_epsilon
         self.device = device
 
 
 class LayerSettings:
-    def __init__(self, layer_id: int, prev_size: int, size: int, next_size: int,
-                 batch_size: int, learning_rate: float, data_size: int, dt: float,
-                 percentage_inhibitory: float, exc_to_inhib_conn_c: float,
-                 exc_to_inhib_conn_sigma_squared: float, layer_sparsity: float, device: torch.device) -> None:
+    def __init__(self,
+                 layer_id: int,
+                 prev_size: int,
+                 size: int,
+                 next_size: int,
+                 batch_size: int,
+                 learning_rate: float,
+                 data_size: int,
+                 dt: float,
+                 percentage_inhibitory: float,
+                 exc_to_inhib_conn_c: float,
+                 exc_to_inhib_conn_sigma_squared: float,
+                 layer_sparsity: float,
+                 tau_mean: float,
+                 tau_var: float,
+                 tau_stdp: float,
+                 tau_rise_alpha: float,
+                 tau_fall_alpha: float,
+                 tau_rise_epsilon: float,
+                 tau_fall_epsilon: float,
+                 device: torch.device) -> None:
         self.layer_id = layer_id
         self.prev_size = prev_size
         self.size = size
@@ -46,4 +77,11 @@ class LayerSettings:
         self.exc_to_inhib_conn_c = exc_to_inhib_conn_c
         self.exc_to_inhib_conn_sigma_squared = exc_to_inhib_conn_sigma_squared
         self.layer_sparsity = layer_sparsity
+        self.tau_mean = tau_mean
+        self.tau_var = tau_var
+        self.tau_stdp = tau_stdp
+        self.tau_rise_alpha = tau_rise_alpha
+        self.tau_fall_alpha = tau_fall_alpha
+        self.tau_rise_epsilon = tau_rise_epsilon
+        self.tau_fall_epsilon = tau_fall_epsilon
         self.device = device
