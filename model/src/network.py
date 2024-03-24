@@ -4,6 +4,7 @@ from typing import List
 from torch import nn
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from model.src.layer import Layer
 from model.src.settings import LayerSettings, Settings
@@ -75,7 +76,7 @@ class Net(nn.Module):
                 logging.info(
                     f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
 
-                for timestep in range(batch.shape[0]):
+                for timestep in tqdm(range(batch.shape[0]), desc="Timesteps"):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
                             spk = layer.forward(batch[timestep])

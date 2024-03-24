@@ -1,15 +1,16 @@
+Sweep logs. Current datetime: Sat Mar 23 20:26:25 2024
 
     running with:
-    layer_sizes: [2, 5]
-    learning_rate: 0.01
+    layer_sizes: [2, 10, 10]
+    learning_rate: 0.001
     dt: 0.01
-    percentage_inhibitory: 50
-    exc_to_inhib_conn_c: 0.25
-    exc_to_inhib_conn_sigma_squared: 60
-    layer_sparsity: 0.1
+    percentage_inhibitory: 60
+    exc_to_inhib_conn_c: 0.75
+    exc_to_inhib_conn_sigma_squared: 40
+    layer_sparsity: 0.9
     ---------------------------------
-    starting weights: tensor([0.7642748952, 0.1173913926])
-    ending weights: tensor([0.7946415544, 0.1769633889])
+    starting weights: tensor([0.4021126032, 0.8559255004])
+    ending weights: tensor([0.4519215226, 0.8476927876])
     is_pass: False
     ---------------------------------
     

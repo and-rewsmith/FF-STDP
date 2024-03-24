@@ -23,7 +23,7 @@ def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
 
 class SparseLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int, layer_settings: LayerSettings,
-                 synaptic_update_type: SynapticUpdateType, bias: bool = False):
+                 synaptic_update_type: SynapticUpdateType, sparsity: float, bias: bool = False):
         """
         Initialize the SparseLinear module.
 
@@ -38,7 +38,7 @@ class SparseLinear(nn.Module):
         self.out_features = out_features
         self.linear = nn.Linear(in_features, out_features, bias=bias)
         torch.nn.init.uniform_(self.linear.weight, a=0.1, b=1.0)
-        self.sparsity = layer_settings.layer_sparsity
+        self.sparsity = sparsity
         self.mask: Optional[torch.Tensor] = None
         self.layer_settings = layer_settings
         self.synaptic_update_type = synaptic_update_type
@@ -56,7 +56,7 @@ class SparseLinear(nn.Module):
             mask,
             dtype=torch.float32,
             requires_grad=False).to(
-            self.linear.weight.device)
+            self.layer_settings.device)
 
         if self.layer_settings.layer_id == 0 and self.synaptic_update_type == SynapticUpdateType.FORWARD:
             self.mask = mask
@@ -89,21 +89,14 @@ class SparseLinear(nn.Module):
     def __gaussian_connection_probability_matrix(
             self) -> torch.Tensor:
         indices_i = torch.arange(self.out_features, dtype=torch.float32).unsqueeze(
-            1).expand(-1, self.in_features)
+            1).expand(-1, self.in_features).to(self.layer_settings.device)
         indices_j = torch.arange(
             self.in_features, dtype=torch.float32).unsqueeze(0).expand(
-            self.out_features, -1)
+            self.out_features, -1).to(self.layer_settings.device)
 
         pre_exp = -1 * (indices_j - self.layer_settings.exc_to_inhib_conn_c * (indices_i +
                         indices_j / self.layer_settings.exc_to_inhib_conn_c - indices_j)) ** 2 / self.layer_settings.exc_to_inhib_conn_sigma_squared
         return torch.exp(pre_exp)
-
-    def set_mask(self, from_layer: 'Layer', to_layer: 'Layer') -> None:
-        """
-        Set the sparsity mask for the weights of the linear layer.
-        """
-        self.mask = self.__create_sparsity_mask_non_exc_to_inh(
-            from_layer, to_layer)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
@@ -129,9 +122,14 @@ class Layer(nn.Module):
         self.layer_settings = layer_settings
 
         # weights from prev layer to this layer
-        self.forward_weights = SparseLinear(
-            layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
-            synaptic_update_type=SynapticUpdateType.FORWARD)
+        if layer_settings.layer_id == 0:
+            self.forward_weights = SparseLinear(
+                layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
+                sparsity=0, synaptic_update_type=SynapticUpdateType.FORWARD)
+        else:
+            self.forward_weights = SparseLinear(
+                layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
+                sparsity=layer_settings.layer_sparsity, synaptic_update_type=SynapticUpdateType.FORWARD)
 
         # TODO: for the last layer these will be of size 0 which can probably be
         # refactored to handle this cleaner.
@@ -139,17 +137,19 @@ class Layer(nn.Module):
         # weights from next layer to this layer
         self.backward_weights = SparseLinear(layer_settings.next_size, layer_settings.size,
                                              layer_settings=layer_settings,
+                                             sparsity=layer_settings.layer_sparsity,
                                              synaptic_update_type=SynapticUpdateType.BACKWARD)
 
         # weights from this layer to this layer
         self.recurrent_weights = SparseLinear(layer_settings.size, layer_settings.size,
                                               layer_settings=layer_settings,
+                                              sparsity=layer_settings.layer_sparsity,
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
         self.inhibitory_mask_vec_ = inhibitory_mask_vec(
-            layer_settings.size, layer_settings.percentage_inhibitory)
+            layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
-        ).float()
+        ).float().to(layer_settings.device)
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
         self.register_buffer("excitatory_mask_vec", self.excitatory_mask_vec_)
         self.excitatory_mask_vec: torch.Tensor = self.excitatory_mask_vec

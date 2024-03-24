@@ -1,3 +1,4 @@
+import logging
 import random
 import subprocess
 import time
@@ -7,6 +8,7 @@ import wandb
 import torch
 from torch.utils.data import DataLoader
 
+from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
@@ -16,14 +18,27 @@ from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
-THIS_TEST_NUM_SAMPLES = 1
-THIS_TEST_NUM_DATAPOINTS = 1000
-
-# TODO: use these config too
-# tau_rise_alpha, tau_fall_alpha, tau_rise_epsilon, tau_fall_epsilon
+THIS_TEST_NUM_SAMPLES = 5
+THIS_TEST_NUM_DATAPOINTS = 8000
 
 
-def bench_many_seeds(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity):
+def objective():
+    wandb.init(
+        project="LPL-SNN-2",
+        config={
+            "architecture": "initial",
+            "dataset": "point-cloud",
+        }
+    )
+
+    layer_sizes = wandb.config.layer_sizes
+    learning_rate = wandb.config.learning_rate
+    dt = wandb.config.dt
+    percentage_inhibitory = wandb.config.percentage_inhibitory
+    exc_to_inhib_conn_c = wandb.config.exc_to_inhib_conn_c
+    exc_to_inhib_conn_sigma_squared = wandb.config.exc_to_inhib_conn_sigma_squared
+    layer_sparsity = wandb.config.layer_sparsity
+
     run_settings = f"""
     running with:
     layer_sizes: {layer_sizes}
@@ -34,21 +49,29 @@ def bench_many_seeds(running_log, layer_sizes, learning_rate, dt, percentage_inh
     exc_to_inhib_conn_sigma_squared: {exc_to_inhib_conn_sigma_squared}
     layer_sparsity: {layer_sparsity}
     """
-    running_log.write(f"{run_settings}")
-    running_log.flush()
-    pass_count = 0
-    total_count = 0
-    for _ in range(10):
-        is_pass = bench_specific_seed(running_log,
-                                      layer_sizes, learning_rate, dt, percentage_inhibitory,
-                                      exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity)
-        if is_pass:
-            pass_count += 1
-        total_count += 1
+    logging.info(run_settings)
 
-    running_log.write(
-        run_settings + f"\npass_rate: {pass_count / total_count}\n\n===============================================================================")
-    running_log.flush()
+    with open("running_log.log", "a") as running_log:
+        running_log.write(f"{run_settings}")
+        running_log.flush()
+
+        pass_count = 0
+        total_count = 0
+        for _ in range(10):
+            is_pass = bench_specific_seed(
+                running_log,
+                layer_sizes, learning_rate, dt, percentage_inhibitory,
+                exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity
+            )
+            if is_pass:
+                pass_count += 1
+            total_count += 1
+
+        running_log.write(
+            run_settings + f"\npass_rate: {pass_count / total_count}\n\n===============================================================================")
+        running_log.flush()
+
+    wandb.log({"pass_rate": pass_count / total_count})
 
 
 def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity):
@@ -70,18 +93,6 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
         device=torch.device("cpu")
     )
 
-    wandb.init(
-        # set the wandb project where this run will be logged
-        project="LPL-SNN-2",
-
-        # track hyperparameters and run metadata
-        config={
-            "architecture": "initial",
-            "dataset": "point-cloud",
-            "settings": settings,
-        }
-    )
-
     try:
         train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
     except FileNotFoundError:
@@ -94,8 +105,6 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
 
     net = Net(settings).to(settings.device)
 
-    # figure out what the excitatory mask is, find that neuron, then find the
-    # weights for that neuron
     layer: Layer = net.layers[0]
     weights = layer.forward_weights.weight()
     mask = layer.excitatory_mask_vec
@@ -118,6 +127,7 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
     """
     running_log.write(message)
     running_log.flush()
+    logging.info(message)
 
     return is_pass
 
@@ -125,27 +135,27 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.set_printoptions(precision=10, sci_mode=False)
+    logging_util.set_logging()
 
-    set_logging()
+    running_log = open("running_log.log", "w")
+    message = f"Sweep logs. Current datetime: {time.ctime()}\n"
+    running_log.write(message)
+    running_log.close()
+    logging.debug(message)
 
-    layer_sizes_options = [[2, 5], [2, 10, 10], [2, 10, 10, 10]]
-    learning_rate_options = [0.01, 0.001, 0.0001]
-    dt_options = [1, 0.1, 0.01, 0.001]
-    percentage_inhibitory_options = [60, 50, 40, 30]
-    exc_to_inhib_conn_c_options = [0.25, 0.5, 0.75]
-    exc_to_inhib_conn_sigma_squared_options = [1, 5, 10, 20, 40, 60]
-    layer_sparsity_options = [0.1, 0.3, 0.5, 0.7, 0.9]
+    sweep_configuration = {
+        "method": "random",
+        "metric": {"goal": "maximize", "name": "pass_rate"},
+        "parameters": {
+            "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
+            "learning_rate": {"values": [0.01, 0.001, 0.0001]},
+            "dt": {"values": [1, 0.1, 0.01, 0.001]},
+            "percentage_inhibitory": {"values": [60, 50, 40, 30]},
+            "exc_to_inhib_conn_c": {"values": [0.25, 0.5, 0.75]},
+            "exc_to_inhib_conn_sigma_squared": {"values": [1, 5, 10, 20, 40, 60]},
+            "layer_sparsity": {"values": [0.1, 0.3, 0.5, 0.7, 0.9]},
+        },
+    }
 
-    while True:
-        running_log = open("running_log.log", "w")
-        layer_sizes = random.choice(layer_sizes_options)
-        learning_rate = random.choice(learning_rate_options)
-        dt = random.choice(dt_options)
-        percentage_inhibitory = random.choice(percentage_inhibitory_options)
-        exc_to_inhib_conn_c = random.choice(exc_to_inhib_conn_c_options)
-        exc_to_inhib_conn_sigma_squared = random.choice(
-            exc_to_inhib_conn_sigma_squared_options)
-        layer_sparsity = random.choice(layer_sparsity_options)
-
-        bench_many_seeds(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory,
-                         exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity)
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-2")
+    wandb.agent(sweep_id, function=objective)
