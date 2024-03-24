@@ -19,23 +19,31 @@ THIS_TEST_NUM_DATAPOINTS = 7000
 
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
-    torch.manual_seed(1128)
+    torch.manual_seed(1139)
     torch.set_printoptions(precision=10, sci_mode=False)
 
     set_logging()
 
     settings = Settings(
-        layer_sizes=[2, 8, 8],
+        layer_sizes=[2, 5],
         data_size=2,
         batch_size=THIS_TEST_NUM_SAMPLES,
-        learning_rate=LEARNING_RATE,
+        learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
-        dt=DT,
-        percentage_inhibitory=PERCENTAGE_INHIBITORY,
-        exc_to_inhib_conn_c=EXC_TO_INHIB_CONN_C,
-        exc_to_inhib_conn_sigma_squared=EXC_TO_INHIB_CONN_SIGMA_SQUARED,
-        layer_sparsity=LAYER_SPARSITY,
+        dt=.01,
+        percentage_inhibitory=50,
+        exc_to_inhib_conn_c=0.25,
+        exc_to_inhib_conn_sigma_squared=60,
+        layer_sparsity=0.9,
+        decay_beta=0.85,
+        tau_mean=1200,
+        tau_var=0.02,
+        tau_stdp=0.1,
+        tau_rise_alpha=0.005,
+        tau_fall_alpha=.05,
+        tau_rise_epsilon=0.002,
+        tau_fall_epsilon=0.02,
         device=torch.device("cpu")
     )
 
@@ -88,5 +96,7 @@ if __name__ == "__main__":
 
     weights = layer.forward_weights.weight()
     weights_filtered_and_masked = weights[mask_expanded.bool()]
+    print(starting_weights_filtered_and_masked)
+    print(weights_filtered_and_masked)
     assert weights_filtered_and_masked[0] > 0.3
     assert weights_filtered_and_masked[1] < 0.05

@@ -143,10 +143,8 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
     weights = layer.forward_weights.weight()
     weights_filtered_and_masked = weights[mask_expanded.bool()]
 
-    # is_pass = weights_filtered_and_masked[0] > 0.3 and weights_filtered_and_masked[1] < 0.05
-    # check to see if weights got potentiated
-    is_pass = weights_filtered_and_masked[0] - starting_weights_filtered_and_masked[0] > .1 and weights_filtered_and_masked[1] - \
-        starting_weights_filtered_and_masked[1] < -0.1
+    is_pass = weights_filtered_and_masked[0] > 0.3 and (
+        weights_filtered_and_masked[1] < 0.05 or weights_filtered_and_masked[1] - starting_weights_filtered_and_masked[1] < -0.25)
 
     message = f"""---------------------------------
     starting weights: {starting_weights_filtered_and_masked}
@@ -177,20 +175,20 @@ if __name__ == "__main__":
         "metric": {"goal": "maximize", "name": "pass_rate"},
         "parameters": {
             "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
-            "learning_rate": {"values": [0.01, 0.001, 0.0001]},
-            "dt": {"values": [1, 0.1, 0.01, 0.001]},
-            "percentage_inhibitory": {"values": [60, 50, 40, 30]},
-            "exc_to_inhib_conn_c": {"values": [0.25, 0.5, 0.75]},
-            "exc_to_inhib_conn_sigma_squared": {"values": [1, 5, 10, 20, 40, 60]},
-            "layer_sparsity": {"values": [0.1, 0.3, 0.5, 0.7, 0.9]},
-            "tau_mean": {"values": [30, 60, 300, 600, 1200, 1800]},
-            "tau_var": {"values": [0.01, 0.02, 0.05, 0.1]},
-            "tau_stdp": {"values": [0.01, 0.02, 0.05, 0.1]},
-            "tau_rise_alpha": {"values": [0.001, 0.002, 0.005, 0.01]},
-            "tau_fall_alpha": {"values": [0.005, 0.01, 0.02, 0.05]},
-            "tau_rise_epsilon": {"values": [0.002, 0.005, 0.01, 0.02]},
-            "tau_fall_epsilon": {"values": [0.01, 0.02, 0.05, 0.1]},
-            "decay_beta": {"values": [0.8, 0.85, 0.9]},
+            "learning_rate": {"min": 0.0001, "max": 0.01},
+            "dt": {"min": 0.001, "max": 1.0},
+            "percentage_inhibitory": {"min": 30, "max": 60},
+            "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
+            "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
+            "layer_sparsity": {"min": 0.1, "max": 0.9},
+            "tau_mean": {"min": 30, "max": 1800},
+            "tau_var": {"min": 0.01, "max": 0.1},
+            "tau_stdp": {"min": 0.01, "max": 0.1},
+            "tau_rise_alpha": {"min": 0.001, "max": 0.01},
+            "tau_fall_alpha": {"min": 0.005, "max": 0.05},
+            "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
+            "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
+            "decay_beta": {"min": 0.8, "max": 0.9},
         },
     }
 

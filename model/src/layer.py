@@ -26,12 +26,6 @@ class SparseLinear(nn.Module):
                  synaptic_update_type: SynapticUpdateType, sparsity: float, bias: bool = False):
         """
         Initialize the SparseLinear module.
-
-        Parameters:
-        - in_features: size of each input sample
-        - out_features: size of each output sample
-        - bias: If set to False, the layer will not learn an additive bias. Default: False
-        - sparsity: The fraction of weights to be set to zero. Default: 0.9
         """
         super(SparseLinear, self).__init__()
         self.in_features = in_features
