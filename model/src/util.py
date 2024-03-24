@@ -21,10 +21,10 @@ class SynapticUpdateType(Enum):
 class MovingAverageLIF:
     def __init__(self, layer_settings: LayerSettings) -> None:
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=layer_settings.tau_mean, batch_size=layer_settings.batch_size, data_size=layer_settings.layer_size, device=layer_settings.device)
+            tau_mean=layer_settings.tau_mean, batch_size=layer_settings.batch_size, data_size=layer_settings.size, device=layer_settings.device)
         self.variance_moving_average = VarianceMovingAverage(
             tau_var=layer_settings.tau_var, device=layer_settings.device)
-        self.neuron_layer = LIF(layer_settings.beta)
+        self.neuron_layer = LIF(layer_settings.decay_beta)
         self.dt = layer_settings.dt
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:

@@ -1,6 +1,5 @@
 import logging
 import random
-import subprocess
 import time
 
 import pandas as pd
@@ -12,7 +11,7 @@ from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.constants import TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
+from model.src.constants import DECAY_BETA, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 from model.src.layer import Layer
 from model.src.network import Net
 from model.src.settings import Settings
@@ -91,6 +90,7 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
         exc_to_inhib_conn_c=exc_to_inhib_conn_c,
         exc_to_inhib_conn_sigma_squared=exc_to_inhib_conn_sigma_squared,
         layer_sparsity=layer_sparsity,
+        decay_beta=DECAY_BETA,
         tau_mean=TAU_MEAN,
         tau_var=TAU_VAR,
         tau_stdp=TAU_STDP,
@@ -169,6 +169,7 @@ if __name__ == "__main__":
             "tau_fall_alpha": {"values": [0.005, 0.01, 0.02, 0.05]},
             "tau_rise_epsilon": {"values": [0.002, 0.005, 0.01, 0.02]},
             "tau_fall_epsilon": {"values": [0.01, 0.02, 0.05, 0.1]},
+            "decay_beta": {"values": [0.8, 0.85, 0.9]},
         },
     }
 

@@ -25,10 +25,25 @@ class Net(nn.Module):
                 settings.layer_sizes) - 1 else 0
             layer_id = i
             layer_settings = LayerSettings(layer_id,
-                                           prev_size, size, next_size,
-                                           settings.batch_size, settings.learning_rate, settings.data_size,
-                                           settings.dt, settings.percentage_inhibitory, settings.exc_to_inhib_conn_c,
-                                           settings.exc_to_inhib_conn_sigma_squared, settings.layer_sparsity,
+                                           prev_size,
+                                           size,
+                                           next_size,
+                                           settings.batch_size,
+                                           settings.learning_rate,
+                                           settings.data_size,
+                                           settings.dt,
+                                           settings.percentage_inhibitory,
+                                           settings.exc_to_inhib_conn_c,
+                                           settings.exc_to_inhib_conn_sigma_squared,
+                                           settings.layer_sparsity,
+                                           settings.decay_beta,
+                                           settings.tau_mean,
+                                           settings.tau_var,
+                                           settings.tau_stdp,
+                                           settings.tau_rise_alpha,
+                                           settings.tau_fall_alpha,
+                                           settings.tau_rise_epsilon,
+                                           settings.tau_fall_epsilon,
                                            settings.device)
             network_layer_settings.append(layer_settings)
 
