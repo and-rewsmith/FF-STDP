@@ -38,6 +38,14 @@ def objective():
     exc_to_inhib_conn_c = wandb.config.exc_to_inhib_conn_c
     exc_to_inhib_conn_sigma_squared = wandb.config.exc_to_inhib_conn_sigma_squared
     layer_sparsity = wandb.config.layer_sparsity
+    decay_beta = wandb.config.decay_beta
+    tau_mean = wandb.config.tau_mean
+    tau_var = wandb.config.tau_var
+    tau_stdp = wandb.config.tau_stdp
+    tau_rise_alpha = wandb.config.tau_rise_alpha
+    tau_fall_alpha = wandb.config.tau_fall_alpha
+    tau_rise_epsilon = wandb.config.tau_rise_epsilon
+    tau_fall_epsilon = wandb.config.tau_fall_epsilon
 
     run_settings = f"""
     running with:
@@ -48,6 +56,14 @@ def objective():
     exc_to_inhib_conn_c: {exc_to_inhib_conn_c}
     exc_to_inhib_conn_sigma_squared: {exc_to_inhib_conn_sigma_squared}
     layer_sparsity: {layer_sparsity}
+    decay_beta: {decay_beta},
+    tau_mean: {tau_mean},
+    tau_var: {tau_var},
+    tau_stdp: {tau_stdp},
+    tau_rise_alpha: {tau_rise_alpha},
+    tau_fall_alpha: {tau_fall_alpha},
+    tau_rise_epsilon: {tau_rise_epsilon},
+    tau_fall_epsilon: {tau_fall_epsilon},
     """
     logging.info(run_settings)
 
@@ -61,7 +77,9 @@ def objective():
             is_pass = bench_specific_seed(
                 running_log,
                 layer_sizes, learning_rate, dt, percentage_inhibitory,
-                exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity
+                exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
+                decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha,
+                tau_rise_epsilon, tau_fall_epsilon
             )
             if is_pass:
                 pass_count += 1
@@ -74,7 +92,8 @@ def objective():
     wandb.log({"pass_rate": pass_count / total_count})
 
 
-def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity):
+def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
+                        decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha, tau_rise_epsilon, tau_fall_epsilon):
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
@@ -90,14 +109,14 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
         exc_to_inhib_conn_c=exc_to_inhib_conn_c,
         exc_to_inhib_conn_sigma_squared=exc_to_inhib_conn_sigma_squared,
         layer_sparsity=layer_sparsity,
-        decay_beta=DECAY_BETA,
-        tau_mean=TAU_MEAN,
-        tau_var=TAU_VAR,
-        tau_stdp=TAU_STDP,
-        tau_rise_alpha=TAU_RISE_ALPHA,
-        tau_fall_alpha=TAU_FALL_ALPHA,
-        tau_rise_epsilon=TAU_RISE_EPSILON,
-        tau_fall_epsilon=TAU_FALL_EPSILON,
+        decay_beta=decay_beta,
+        tau_mean=tau_mean,
+        tau_var=tau_var,
+        tau_stdp=tau_stdp,
+        tau_rise_alpha=tau_rise_alpha,
+        tau_fall_alpha=tau_fall_alpha,
+        tau_rise_epsilon=tau_rise_epsilon,
+        tau_fall_epsilon=tau_fall_epsilon,
         device=torch.device("cpu")
     )
 
