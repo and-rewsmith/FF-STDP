@@ -146,8 +146,12 @@ class Layer(nn.Module):
                                               sparsity=layer_settings.layer_sparsity,
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
-        self.inhibitory_mask_vec_ = inhibitory_mask_vec(
-            layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
+        # TODOPRE: remove
+        if layer_settings.layer_id == 0:
+            self.inhibitory_mask_vec_ = inhibitory_mask_vec(layer_settings.size, 50).to(layer_settings.device)
+        else:
+            self.inhibitory_mask_vec_ = inhibitory_mask_vec(
+                layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
         ).float().to(layer_settings.device)
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)

@@ -1,31 +1,11 @@
-Sweep logs. Current datetime: Sun Mar 24 11:44:26 2024
+Sweep logs. Current datetime: Sun Mar 24 11:49:14 2024
 
     running with:
-    layer_sizes: [2, 5]
-    learning_rate: 0.01
-    dt: 1
-    percentage_inhibitory: 30
-    exc_to_inhib_conn_c: 0.75
-    exc_to_inhib_conn_sigma_squared: 40
-    layer_sparsity: 0.1
-    ---------------------------------
-    starting weights: tensor([0.7637388110, 0.1306131184, 0.1495077908, 0.7291358113])
-    ending weights: tensor([    1.4058177471,     0.0000000000,     0.0000641823,     0.6021898985])
-    is_pass: True
-    ---------------------------------
-    ---------------------------------
-    starting weights: tensor([0.1797955632, 0.2079437375, 0.5986573100, 0.5271892548])
-    ending weights: tensor([    0.0004163669,     0.0001087207,     1.0101789236,     0.0000000000])
-    is_pass: False
-    ---------------------------------
-    ---------------------------------
-    starting weights: tensor([0.6635910273, 0.4443210661, 0.5885787010, 0.2773501277])
-    ending weights: tensor([    0.7716572881,     0.0000010663,     0.4224869311,     0.0000004198])
-    is_pass: True
-    ---------------------------------
-    ---------------------------------
-    starting weights: tensor([0.3823645711, 0.5893186331, 0.3342436254, 0.2413074076])
-    ending weights: tensor([    0.0000610540,     0.4301334321,     0.0001627095,     0.0001188685])
-    is_pass: False
-    ---------------------------------
+    layer_sizes: [2, 10, 10, 10]
+    learning_rate: 0.0001
+    dt: 0.01
+    percentage_inhibitory: 40
+    exc_to_inhib_conn_c: 0.25
+    exc_to_inhib_conn_sigma_squared: 1
+    layer_sparsity: 0.5
     
