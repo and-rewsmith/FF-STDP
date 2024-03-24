@@ -5,6 +5,7 @@ __pycache__
 .mypy_cache
 .pytest_cache
 ci_log.txt
+running_log.txt
 
 generated_artifacts/*
 !generated_artifacts/README.md
