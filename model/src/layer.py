@@ -89,7 +89,8 @@ class SparseLinear(nn.Module):
             self.out_features, -1).to(self.layer_settings.device)
 
         pre_exp = -1 * (indices_j - self.layer_settings.exc_to_inhib_conn_c * (indices_i +
-                        indices_j / self.layer_settings.exc_to_inhib_conn_c - indices_j)) ** 2 / self.layer_settings.exc_to_inhib_conn_sigma_squared
+                        indices_j / self.layer_settings.exc_to_inhib_conn_c - indices_j)) \
+            ** 2 / self.layer_settings.exc_to_inhib_conn_sigma_squared
         return torch.exp(pre_exp)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

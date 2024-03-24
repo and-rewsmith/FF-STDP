@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from typing import Any, TextIO
 
 import pandas as pd
 import wandb
@@ -20,7 +21,7 @@ THIS_TEST_NUM_SAMPLES = 5
 THIS_TEST_NUM_DATAPOINTS = 8000
 
 
-def objective():
+def objective() -> None:
     wandb.init(
         project="LPL-SNN-2",
         config={
@@ -85,14 +86,29 @@ def objective():
             total_count += 1
 
         running_log.write(
-            run_settings + f"\npass_rate: {pass_count / total_count}\n\n===============================================================================")
+            run_settings + f"\npass_rate: {pass_count / total_count}\n\n======================================\
+                =========================================")
         running_log.flush()
 
     wandb.log({"pass_rate": pass_count / total_count})
 
 
-def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_inhibitory, exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
-                        decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha, tau_rise_epsilon, tau_fall_epsilon):
+def bench_specific_seed(running_log: TextIO,
+                        layer_sizes: list[int],
+                        learning_rate: float,
+                        dt: float,
+                        percentage_inhibitory: int,
+                        exc_to_inhib_conn_c: float,
+                        exc_to_inhib_conn_sigma_squared: float,
+                        layer_sparsity: float,
+                        decay_beta: float,
+                        tau_mean: float,
+                        tau_var: float,
+                        tau_stdp: float,
+                        tau_rise_alpha: float,
+                        tau_fall_alpha: float,
+                        tau_rise_epsilon: float,
+                        tau_fall_epsilon: float) -> bool:
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
@@ -143,8 +159,9 @@ def bench_specific_seed(running_log, layer_sizes, learning_rate, dt, percentage_
     weights = layer.forward_weights.weight()
     weights_filtered_and_masked = weights[mask_expanded.bool()]
 
-    is_pass = weights_filtered_and_masked[0] > 0.3 and (
-        weights_filtered_and_masked[1] < 0.05 or weights_filtered_and_masked[1] - starting_weights_filtered_and_masked[1] < -0.25)
+    is_pass: bool = weights_filtered_and_masked[0] > 0.3 and (
+        weights_filtered_and_masked[1] < 0.05 or
+        weights_filtered_and_masked[1] - starting_weights_filtered_and_masked[1] < -0.25)  # type: ignore
 
     message = f"""---------------------------------
     starting weights: {starting_weights_filtered_and_masked}

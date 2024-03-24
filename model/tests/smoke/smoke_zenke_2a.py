@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.constants import DT, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, LAYER_SPARSITY, LEARNING_RATE, PERCENTAGE_INHIBITORY
 from model.src.layer import Layer
 from model.src.logging_util import set_logging
 from model.src.network import Net
