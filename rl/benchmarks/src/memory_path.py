@@ -38,8 +38,8 @@ NUM_REWARD = 1
 MAP_LENGTH_X = 19
 MAP_LENGTH_Y = 19
 
-INIT_TIMESTEPS = 100
-TRAIN_TIMESTEPS = 10000
+INIT_TIMESTEPS = 1000
+TRAIN_TIMESTEPS = 100000
 INFERENCE_TIMESTEPS = 500
 
 
@@ -92,7 +92,7 @@ def convert_observation_to_spike_input(
 
 
 def train_decode_from_training_run(activations_per_timestep, positions_x, positions_y,
-                                   rewards, past_actions, num_epochs=10000, learning_rate=0.00005, batch_size=256):
+                                   rewards, past_actions, num_epochs=10000, learning_rate=0.000005, batch_size=256):
     # Create a DataLoader for batching the data
     dataset = TensorDataset(
         activations_per_timestep,
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     torch.set_printoptions(precision=10, sci_mode=False)
 
     settings = Settings(
-        layer_sizes=[50, 50, 50, 50],
+        layer_sizes=[100, 100, 100, 100],  # Architecture layer sizes remain unchanged
         data_size=7 * 7 * (NUM_COLORS + NUM_OBJECTS + NUM_STATES) +
         NUM_DIRECTIONS + NUM_ACTIONS + NUM_REWARD,
         batch_size=BATCH_SIZE,

@@ -68,6 +68,8 @@ class Net(nn.Module):
         return [layer.retreive_activations() for layer in self.layers]
 
     def process_data_single_timestep(self, data: torch.Tensor) -> None:
+        data = data.to(self.settings.device)
+
         for i, layer in enumerate(self.layers):
             if i == 0:
                 spk = layer.forward(data)

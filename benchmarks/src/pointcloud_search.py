@@ -188,7 +188,7 @@ if __name__ == "__main__":
     logging.debug(message)
 
     sweep_configuration = {
-        "method": "random",
+        "method": "bayes",
         "metric": {"goal": "maximize", "name": "pass_rate"},
         "parameters": {
             "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
