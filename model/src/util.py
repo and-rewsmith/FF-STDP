@@ -3,13 +3,13 @@ import math
 from collections import deque
 from typing import Deque, Optional, Tuple
 
-from torch import nn
 import torch
 
-from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, \
-    TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
+from model.src.constants import DT, MAX_RETAINED_SPIKES, TAU_MEAN, \
+    TAU_STDP, TAU_VAR
 
 from model.src.lif import LIF
+from model.src.settings import LayerSettings
 
 
 class SynapticUpdateType(Enum):
@@ -19,19 +19,20 @@ class SynapticUpdateType(Enum):
 
 
 class MovingAverageLIF:
-    def __init__(self, batch_size: int, layer_size: int, beta: float, device: torch.device, tau_mean: float = TAU_MEAN,
-                 tau_var: float = TAU_VAR) -> None:
+    def __init__(self, layer_settings: LayerSettings) -> None:
         self.spike_moving_average = SpikeMovingAverage(
-            tau_mean=tau_mean, batch_size=batch_size, data_size=layer_size, device=device)
+            tau_mean=layer_settings.tau_mean, batch_size=layer_settings.batch_size,
+            data_size=layer_settings.size, device=layer_settings.device)
         self.variance_moving_average = VarianceMovingAverage(
-            tau_var=tau_var, device=device)
-        self.neuron_layer = LIF(beta)
+            tau_var=layer_settings.tau_var, device=layer_settings.device)
+        self.neuron_layer = LIF(layer_settings.decay_beta)
+        self.dt = layer_settings.dt
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         spike = self.neuron_layer.forward(current)
 
-        mean_spike = self.spike_moving_average.apply(spike)
-        self.variance_moving_average.apply(spike, mean_spike)
+        mean_spike = self.spike_moving_average.apply(spike, self.dt)
+        self.variance_moving_average.apply(spike, mean_spike, self.dt)
 
         return (spike)
 
@@ -114,14 +115,14 @@ class DoubleExponentialFilter:
 
 class ExcitatorySynapseFilterGroup:
 
-    def __init__(self, device: torch.device) -> None:
+    def __init__(self, layer_settings: LayerSettings) -> None:
 
         self.first_term_alpha = DoubleExponentialFilter(
-            TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
+            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, device=layer_settings.device)
         self.first_term_epsilon = DoubleExponentialFilter(
-            TAU_RISE_EPSILON, TAU_FALL_EPSILON, device=device)
+            layer_settings.tau_rise_epsilon, layer_settings.tau_fall_epsilon, device=layer_settings.device)
         self.second_term_alpha = DoubleExponentialFilter(
-            TAU_RISE_ALPHA, TAU_FALL_ALPHA, device=device)
+            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, device=layer_settings.device)
 
 
 class SpikeMovingAverage:

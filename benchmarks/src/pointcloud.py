@@ -10,8 +10,8 @@ from model.src.constants import LEARNING_RATE
 from model.src.settings import Settings
 from model.src.network import Net
 
-NUM_STEPS = 5000
-BATCH_SIZE = 500
+NUM_STEPS = 7000
+BATCH_SIZE = 10
 ENCODE_SPIKE_TRAINS = False
 
 
@@ -23,12 +23,25 @@ if __name__ == "__main__":
     logging_util.set_logging()
 
     settings = Settings(
-        layer_sizes=[2],
+        layer_sizes=[2, 5],
         data_size=2,
         batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE,
+        learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        dt=.01,
+        percentage_inhibitory=50,
+        exc_to_inhib_conn_c=0.25,
+        exc_to_inhib_conn_sigma_squared=60,
+        layer_sparsity=0.9,
+        decay_beta=0.85,
+        tau_mean=1200,
+        tau_var=0.02,
+        tau_stdp=0.1,
+        tau_rise_alpha=0.005,
+        tau_fall_alpha=.05,
+        tau_rise_epsilon=0.002,
+        tau_fall_epsilon=0.02,
         device=torch.device("cpu")
     )
 

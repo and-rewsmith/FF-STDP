@@ -4,6 +4,7 @@ from typing import List
 from torch import nn
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from model.src.layer import Layer
 from model.src.settings import LayerSettings, Settings
@@ -24,8 +25,25 @@ class Net(nn.Module):
                 settings.layer_sizes) - 1 else 0
             layer_id = i
             layer_settings = LayerSettings(layer_id,
-                                           prev_size, size, next_size,
-                                           settings.batch_size, settings.learning_rate, settings.data_size,
+                                           prev_size,
+                                           size,
+                                           next_size,
+                                           settings.batch_size,
+                                           settings.learning_rate,
+                                           settings.data_size,
+                                           settings.dt,
+                                           settings.percentage_inhibitory,
+                                           settings.exc_to_inhib_conn_c,
+                                           settings.exc_to_inhib_conn_sigma_squared,
+                                           settings.layer_sparsity,
+                                           settings.decay_beta,
+                                           settings.tau_mean,
+                                           settings.tau_var,
+                                           settings.tau_stdp,
+                                           settings.tau_rise_alpha,
+                                           settings.tau_fall_alpha,
+                                           settings.tau_rise_epsilon,
+                                           settings.tau_fall_epsilon,
                                            settings.device)
             network_layer_settings.append(layer_settings)
 
@@ -73,7 +91,7 @@ class Net(nn.Module):
                 logging.info(
                     f"Epoch {epoch} - Batch {i} - Sample data: {batch.shape}")
 
-                for timestep in range(batch.shape[0]):
+                for timestep in tqdm(range(batch.shape[0]), desc="Timesteps"):
                     for i, layer in enumerate(self.layers):
                         if i == 0:
                             spk = layer.forward(batch[timestep])

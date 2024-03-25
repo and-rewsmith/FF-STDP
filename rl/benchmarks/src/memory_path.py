@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from model.src.constants import LEARNING_RATE
+from model.src.constants import DT, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, LAYER_SPARSITY, LEARNING_RATE, PERCENTAGE_INHIBITORY, TAU_FALL_ALPHA, TAU_FALL_EPSILON, TAU_MEAN, TAU_RISE_ALPHA, TAU_RISE_EPSILON, TAU_STDP, TAU_VAR
 from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
@@ -39,7 +39,7 @@ MAP_LENGTH_X = 19
 MAP_LENGTH_Y = 19
 
 INIT_TIMESTEPS = 100
-TRAIN_TIMESTEPS = 1000
+TRAIN_TIMESTEPS = 10000
 INFERENCE_TIMESTEPS = 500
 
 
@@ -215,13 +215,26 @@ if __name__ == "__main__":
     torch.set_printoptions(precision=10, sci_mode=False)
 
     settings = Settings(
-        layer_sizes=[100, 100, 100, 100],
+        layer_sizes=[50, 50, 50, 50],
         data_size=7 * 7 * (NUM_COLORS + NUM_OBJECTS + NUM_STATES) +
         NUM_DIRECTIONS + NUM_ACTIONS + NUM_REWARD,
         batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE,
+        learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
+        dt=.01,
+        percentage_inhibitory=50,
+        exc_to_inhib_conn_c=0.25,
+        exc_to_inhib_conn_sigma_squared=60,
+        layer_sparsity=0.9,
+        decay_beta=0.85,
+        tau_mean=1200,
+        tau_var=0.02,
+        tau_stdp=0.1,
+        tau_rise_alpha=0.005,
+        tau_fall_alpha=.05,
+        tau_rise_epsilon=0.002,
+        tau_fall_epsilon=0.02,
         device=torch.device("cpu")
     )
 

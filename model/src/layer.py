@@ -6,8 +6,8 @@ import torch
 from torch import nn
 import wandb
 
-from model.src.constants import DECAY_BETA, DELTA, EXC_TO_INHIB_CONN_C, EXC_TO_INHIB_CONN_SIGMA_SQUARED, \
-    KAPPA, LAMBDA_HEBBIAN, LAYER_SPARSITY, PERCENTAGE_INHIBITORY, THETA_REST, XI, ZENKE_BETA
+from model.src.constants import DECAY_BETA, DELTA, \
+    KAPPA, LAMBDA_HEBBIAN, THETA_REST, XI, ZENKE_BETA
 from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
 from model.src.util import ExcitatorySynapseFilterGroup, InhibitoryPlasticityTrace, MovingAverageLIF, SynapticUpdateType
@@ -23,15 +23,9 @@ def inhibitory_mask_vec(length: int, percentage_ones: int) -> torch.Tensor:
 
 class SparseLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int, layer_settings: LayerSettings,
-                 synaptic_update_type: SynapticUpdateType, bias: bool = False, sparsity: float = LAYER_SPARSITY):
+                 synaptic_update_type: SynapticUpdateType, sparsity: float, bias: bool = False):
         """
         Initialize the SparseLinear module.
-
-        Parameters:
-        - in_features: size of each input sample
-        - out_features: size of each output sample
-        - bias: If set to False, the layer will not learn an additive bias. Default: False
-        - sparsity: The fraction of weights to be set to zero. Default: 0.9
         """
         super(SparseLinear, self).__init__()
         self.in_features = in_features
@@ -56,7 +50,7 @@ class SparseLinear(nn.Module):
             mask,
             dtype=torch.float32,
             requires_grad=False).to(
-            self.linear.weight.device)
+            self.layer_settings.device)
 
         if self.layer_settings.layer_id == 0 and self.synaptic_update_type == SynapticUpdateType.FORWARD:
             self.mask = mask
@@ -87,24 +81,17 @@ class SparseLinear(nn.Module):
         self.mask = mask
 
     def __gaussian_connection_probability_matrix(
-            self, c: float = EXC_TO_INHIB_CONN_C,
-            sigma_squared: float = EXC_TO_INHIB_CONN_SIGMA_SQUARED) -> torch.Tensor:
+            self) -> torch.Tensor:
         indices_i = torch.arange(self.out_features, dtype=torch.float32).unsqueeze(
-            1).expand(-1, self.in_features)
+            1).expand(-1, self.in_features).to(self.layer_settings.device)
         indices_j = torch.arange(
             self.in_features, dtype=torch.float32).unsqueeze(0).expand(
-            self.out_features, -1)
+            self.out_features, -1).to(self.layer_settings.device)
 
-        pre_exp = -1 * (indices_j - c * (indices_i +
-                        indices_j / c - indices_j)) ** 2 / sigma_squared
+        pre_exp = -1 * (indices_j - self.layer_settings.exc_to_inhib_conn_c * (indices_i +
+                        indices_j / self.layer_settings.exc_to_inhib_conn_c - indices_j)) \
+            ** 2 / self.layer_settings.exc_to_inhib_conn_sigma_squared
         return torch.exp(pre_exp)
-
-    def set_mask(self, from_layer: 'Layer', to_layer: 'Layer') -> None:
-        """
-        Set the sparsity mask for the weights of the linear layer.
-        """
-        self.mask = self.__create_sparsity_mask_non_exc_to_inh(
-            from_layer, to_layer)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
@@ -130,9 +117,14 @@ class Layer(nn.Module):
         self.layer_settings = layer_settings
 
         # weights from prev layer to this layer
-        self.forward_weights = SparseLinear(
-            layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
-            synaptic_update_type=SynapticUpdateType.FORWARD)
+        if layer_settings.layer_id == 0:
+            self.forward_weights = SparseLinear(
+                layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
+                sparsity=0, synaptic_update_type=SynapticUpdateType.FORWARD)
+        else:
+            self.forward_weights = SparseLinear(
+                layer_settings.prev_size, layer_settings.size, layer_settings=layer_settings,
+                sparsity=layer_settings.layer_sparsity, synaptic_update_type=SynapticUpdateType.FORWARD)
 
         # TODO: for the last layer these will be of size 0 which can probably be
         # refactored to handle this cleaner.
@@ -140,17 +132,23 @@ class Layer(nn.Module):
         # weights from next layer to this layer
         self.backward_weights = SparseLinear(layer_settings.next_size, layer_settings.size,
                                              layer_settings=layer_settings,
+                                             sparsity=layer_settings.layer_sparsity,
                                              synaptic_update_type=SynapticUpdateType.BACKWARD)
 
         # weights from this layer to this layer
         self.recurrent_weights = SparseLinear(layer_settings.size, layer_settings.size,
                                               layer_settings=layer_settings,
+                                              sparsity=layer_settings.layer_sparsity,
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
-        self.inhibitory_mask_vec_ = inhibitory_mask_vec(
-            layer_settings.size, PERCENTAGE_INHIBITORY)
+        # TODOPRE: remove
+        if layer_settings.layer_id == 0:
+            self.inhibitory_mask_vec_ = inhibitory_mask_vec(layer_settings.size, 50).to(layer_settings.device)
+        else:
+            self.inhibitory_mask_vec_ = inhibitory_mask_vec(
+                layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
-        ).float()
+        ).float().to(layer_settings.device)
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
         self.register_buffer("excitatory_mask_vec", self.excitatory_mask_vec_)
         self.excitatory_mask_vec: torch.Tensor = self.excitatory_mask_vec
@@ -159,18 +157,17 @@ class Layer(nn.Module):
             self.inhibitory_mask_vec +
             self.excitatory_mask_vec == 1)
 
-        self.lif = MovingAverageLIF(batch_size=layer_settings.batch_size, layer_size=layer_settings.size,
-                                    beta=DECAY_BETA, device=self.layer_settings.device)
+        self.lif = MovingAverageLIF(layer_settings)
 
         self.prev_layer: Optional[Layer] = None
         self.next_layer: Optional[Layer] = None
 
         self.forward_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
         self.recurrent_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
         self.backward_filter_group = ExcitatorySynapseFilterGroup(
-            self.layer_settings.device)
+            self.layer_settings)
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
@@ -377,13 +374,17 @@ class Layer(nn.Module):
             spike, self.excitatory_mask_vec)
         inhibitory_spike = reduce_feature_dims_with_mask(
             spike, self.inhibitory_mask_vec)
+
         wandb.log(
             {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
-        wandb.log(
-            {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+        try:
+            wandb.log(
+                {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+            wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
+                      step=self.forward_counter)
+        except IndexError:
+            pass
         wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
-                  step=self.forward_counter)
-        wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
                   step=self.forward_counter)
         wandb.log(
             {
@@ -467,9 +468,9 @@ class Layer(nn.Module):
                 1)
             first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
             first_term_epsilon = filter_group.first_term_epsilon.apply(
-                first_term_no_filter)
+                first_term_no_filter, self.layer_settings.dt)
             first_term_alpha = filter_group.first_term_alpha.apply(
-                first_term_epsilon)
+                first_term_epsilon, self.layer_settings.dt)
 
             # assert shapes
             assert f_prime_u_i.shape == (
@@ -503,7 +504,7 @@ class Layer(nn.Module):
             second_term_no_filter = second_term_no_filter.unsqueeze(
                 2).expand(-1, -1, from_layer_size)
             second_term_alpha = filter_group.second_term_alpha.apply(
-                second_term_no_filter)
+                second_term_no_filter, self.layer_settings.dt)
 
             # assert shapes
             assert second_term_deviation.shape == (
@@ -569,7 +570,7 @@ class Layer(nn.Module):
             self.layer_settings.size,
             from_layer.layer_settings.size)
 
-        self.inhibitory_trace.apply(spike)
+        self.inhibitory_trace.apply(spike, self.layer_settings.dt)
 
         with torch.no_grad():
             x_i = self.inhibitory_trace.tracked_value().unsqueeze(
