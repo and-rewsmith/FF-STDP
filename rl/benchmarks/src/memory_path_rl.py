@@ -4,6 +4,7 @@ import wandb
 import torch
 from tqdm import tqdm
 from torch import nn
+from torchviz import make_dot
 
 from model.src.network import Net
 from model.src.settings import Settings
@@ -39,8 +40,8 @@ INIT_TIMESTEPS = 1000
 TRAIN_TIMESTEPS = 100000
 INFERENCE_TIMESTEPS = 500
 
-ACTOR_LR = 1e-8
-CRITIC_LR = 1e-7
+ACTOR_LR = 1e-7
+CRITIC_LR = 1e-6
 STATE_PREDICTOR_LR = 1e-5
 
 VISION_SIZE = 7
@@ -90,16 +91,16 @@ class DecoderGroup:
         self.prev_value = None
         self.prev_actor_neg_log_prob = None
 
-    def train(self, state, action, reward):
+    def train(self, state, resulting_state, action, reward):
         # Compute RPE
         value = self.critic(state)
         if self.prev_value is not None:
             print(f"value: {value.item()}")
             print(f"rpe: {reward + value.item() - self.prev_value}")
             print(f"reward: {reward}")
+            print()
             wandb.log({"rpe": reward + value.item() - self.prev_value})
             wandb.log({"value": value.item()})
-            print()
             rpe = reward + value - self.prev_value
         else:
             rpe = reward
@@ -118,6 +119,10 @@ class DecoderGroup:
             wandb.log({"critic_loss": critic_loss.item()})
             self.critic.optim.zero_grad()
             critic_loss.backward()
+            # graph = make_dot(critic_loss, params=dict(self.critic.named_parameters()))
+            # graph.render("computation_graph", format="png")
+            # graph.view()
+            # input()
             self.critic.optim.step()
 
         # Train StatePredictor
@@ -134,7 +139,7 @@ class DecoderGroup:
         self.prev_value = value.detach()
 
         # update prev actor neg log prob
-        action_prob = self.actor(state)
+        action_prob = self.actor(resulting_state)
         self.prev_actor_neg_log_prob = -torch.log(action_prob[0][action])
 
         return torch.multinomial(action_prob, 1).item()
@@ -145,7 +150,7 @@ class DecoderGroup:
 
 
 def convert_observation_to_spike_input(
-        vision: np.ndarray, direction: int, action: int, reward: float):
+        vision: np.ndarray, direction: int):
     # Define the encoding dimensions
     encoding_size = NUM_OBJECTS + NUM_COLORS + NUM_STATES
 
@@ -168,26 +173,14 @@ def convert_observation_to_spike_input(
     direction_one_hot = np.zeros(4)
     direction_one_hot[direction] = 1
 
-    # One-hot encode the action
-    action_one_hot = np.zeros(NUM_ACTIONS)
-    action_one_hot[action] = 1
-
-    # Binary encode the reward
-    # TODO: change to incorporate reward decay
-    reward_binary = np.array([1]) if reward > 0 else np.array([0])
-
     # Concatenate the collapsed tensor with direction, action, and reward
     # encodings
     collapsed_tensor = torch.from_numpy(
         binary_array.reshape(1, feature_dim)).float()
     direction_tensor = torch.from_numpy(direction_one_hot).float().unsqueeze(0)
-    action_tensor = torch.from_numpy(action_one_hot).float().unsqueeze(0)
-    reward_tensor = torch.from_numpy(reward_binary).float().unsqueeze(0)
     final_tensor = torch.cat(
         (collapsed_tensor,
-         direction_tensor,
-         action_tensor,
-         reward_tensor),
+         direction_tensor),
         dim=1)
 
     return final_tensor
@@ -214,14 +207,14 @@ if __name__ == "__main__":
     )
 
     decoder_group_input_size = VISION_SIZE * VISION_SIZE * \
-        (NUM_OBJECTS + NUM_COLORS + NUM_STATES) + NUM_DIRECTIONS + NUM_ACTIONS + NUM_REWARD
+        (NUM_OBJECTS + NUM_COLORS + NUM_STATES) + NUM_DIRECTIONS
     decoder_group = DecoderGroup(
         decoder_group_input_size,
         NUM_ACTIONS)
 
     env = gym.make(
         'MiniGrid-FourRooms-v0',
-        render_mode='human',
+        render_mode='none',
         max_steps=1000000)
     env.action_space.seed(42)
 
@@ -247,19 +240,25 @@ if __name__ == "__main__":
         observation, reward, terminated, truncated, info = env.step(action)
         if not is_in_bounds(env.agent_pos):
             failures += 1
-            reward = -2
+            reward = -1
 
         if reward != 0:
             print("reward: ", reward)
+            reward = reward / 10
 
         # convert to spike encoding based on: action, reward, visibility, and direction
         # feed this into the network
         visibility = old_observation["image"]
         direction = old_observation["direction"]
         spike_encoding = convert_observation_to_spike_input(
-            visibility, direction, action, reward)
+            visibility, direction)
 
-        action = decoder_group.train(spike_encoding, action, reward)
+        visibility = observation["image"]
+        direction = observation["direction"]
+        resulting_state_spike_encoding = convert_observation_to_spike_input(
+            visibility, direction)
+
+        action = decoder_group.train(spike_encoding, resulting_state_spike_encoding, action, reward)
 
         if terminated or truncated or not is_in_bounds(env.agent_pos):
             print("RESETTING")
