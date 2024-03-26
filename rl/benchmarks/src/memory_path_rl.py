@@ -91,10 +91,6 @@ class DecoderGroup:
         # Compute RPE
         value = self.critic(state)
         if self.prev_value is not None:
-            # print(f"value: {value.item()}")
-            # print(f"rpe: {reward + value.item() - self.prev_value}")
-            # print(f"reward: {reward}")
-            # print()
             wandb.log({"rpe": reward + value.item() - self.prev_value})
             wandb.log({"value": value.item()})
             rpe = reward + value - self.prev_value
@@ -115,10 +111,6 @@ class DecoderGroup:
             wandb.log({"critic_loss": critic_loss.item()})
             self.critic.optim.zero_grad()
             critic_loss.backward()
-            # graph = make_dot(critic_loss, params=dict(self.critic.named_parameters()))
-            # graph.render("computation_graph", format="png")
-            # graph.view()
-            # input()
             self.critic.optim.step()
 
         # Train StatePredictor
@@ -257,14 +249,8 @@ if __name__ == "__main__":
         action = decoder_group.train(spike_encoding, resulting_state_spike_encoding, action, reward)
 
         if terminated or truncated or not is_in_bounds(env.agent_pos):
-            # print("RESETTING")
             if terminated:
-                # print("terminated: ", terminated)
                 successes += 1
-            # if truncated:
-            #     print("truncated: ", truncated)
-            # if not is_in_bounds(env.agent_pos):
-            #     print("agent_pos: ", env.agent_pos)
             observation, info = env.reset(seed=4)
 
     env.close()
