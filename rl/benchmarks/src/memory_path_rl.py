@@ -6,10 +6,6 @@ from tqdm import tqdm
 from torch import nn
 from torchviz import make_dot
 
-from model.src.network import Net
-from model.src.settings import Settings
-from model.src.visualizer import NetworkVisualizer
-
 ENCODE_SPIKE_TRAINS = False
 
 BATCH_SIZE = 1
@@ -95,10 +91,10 @@ class DecoderGroup:
         # Compute RPE
         value = self.critic(state)
         if self.prev_value is not None:
-            print(f"value: {value.item()}")
-            print(f"rpe: {reward + value.item() - self.prev_value}")
-            print(f"reward: {reward}")
-            print()
+            # print(f"value: {value.item()}")
+            # print(f"rpe: {reward + value.item() - self.prev_value}")
+            # print(f"reward: {reward}")
+            # print()
             wandb.log({"rpe": reward + value.item() - self.prev_value})
             wandb.log({"value": value.item()})
             rpe = reward + value - self.prev_value
@@ -243,8 +239,8 @@ if __name__ == "__main__":
             reward = -1
 
         if reward != 0:
-            print("reward: ", reward)
-            reward = reward / 10
+            # print("reward: ", reward)
+            reward = reward / 20
 
         # convert to spike encoding based on: action, reward, visibility, and direction
         # feed this into the network
@@ -261,39 +257,14 @@ if __name__ == "__main__":
         action = decoder_group.train(spike_encoding, resulting_state_spike_encoding, action, reward)
 
         if terminated or truncated or not is_in_bounds(env.agent_pos):
-            print("RESETTING")
+            # print("RESETTING")
             if terminated:
-                print("terminated: ", terminated)
+                # print("terminated: ", terminated)
                 successes += 1
-            if truncated:
-                print("truncated: ", truncated)
-            if not is_in_bounds(env.agent_pos):
-                print("agent_pos: ", env.agent_pos)
-            observation, info = env.reset(seed=4)
-
-    # TODOPRE: inference
-    for _ in tqdm(range(TRAIN_TIMESTEPS), desc="collect for decoding"):
-        old_observation = observation
-
-        # some actions aren't used
-        if action > 2:
-            print("UNEXPECTED ACTION")
-            exit()
-
-        observation, reward, terminated, truncated, info = env.step(action)
-
-        # convert to spike encoding based on: action, reward, visibility, and direction
-        # feed this into the network
-        visibility = observation["image"]
-        direction = observation["direction"]
-        spike_encoding = convert_observation_to_spike_input(
-            visibility, direction, action, reward)
-
-        action = decoder_group.forward(spike_encoding, action, reward)
-
-        if terminated or truncated:
-            print("terminated: ", terminated)
-            print("truncated: ", truncated)
+            # if truncated:
+            #     print("truncated: ", truncated)
+            # if not is_in_bounds(env.agent_pos):
+            #     print("agent_pos: ", env.agent_pos)
             observation, info = env.reset(seed=4)
 
     env.close()
