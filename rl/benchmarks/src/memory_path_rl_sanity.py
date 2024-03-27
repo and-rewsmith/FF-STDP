@@ -4,8 +4,11 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import gymnasium as gym
+import wandb
 
 ACTION_DIM = 3
+ACTOR_LR = 1e-4
+CRITIC_LR = 1e-3
 
 
 class Actor(nn.Module):
@@ -35,6 +38,17 @@ class Critic(nn.Module):
         return self.network(state)
 
 
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="LPL-SNN-RL-POC-2",
+
+    # track hyperparameters and run metadata
+    config={
+        "architecture": "initial",
+        "dataset": "rl-memory-path",
+    }
+)
+
 torch.autograd.set_detect_anomaly(True)
 torch.manual_seed(1234)
 torch.set_printoptions(precision=10, sci_mode=False)
@@ -53,8 +67,8 @@ total_state_dim = state_dim_1 * state_dim_2 * state_dim_3
 actor = Actor(total_state_dim, ACTION_DIM)
 critic = Critic(total_state_dim)
 
-actor_optim = optim.Adam(actor.parameters(), lr=1e-4)
-critic_optim = optim.Adam(critic.parameters(), lr=1e-3)
+actor_optim = optim.Adam(actor.parameters(), lr=ACTOR_LR)
+critic_optim = optim.Adam(critic.parameters(), lr=CRITIC_LR)
 
 num_episodes = 10000
 gamma = 0.99
@@ -73,7 +87,6 @@ for episode in range(num_episodes):
     while not done:
         state_tensor = torch.FloatTensor(state)
         probs = actor(state_tensor)
-        print(probs)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
 
@@ -85,16 +98,20 @@ for episode in range(num_episodes):
 
         # Update Critic
         value = critic(state_tensor)
+        wandb.log({"value": value})
         next_value = critic(torch.FloatTensor(next_state))
         td_error = reward + (gamma * next_value * (1 - int(done))) - value
+        wandb.log({"td_error": td_error})
 
         critic_loss = td_error ** 2
+        wandb.log({"critic_loss": critic_loss})
         critic_optim.zero_grad()
         critic_loss.backward()
         critic_optim.step()
 
         # Update Actor
         actor_loss = -dist.log_prob(action) * td_error.detach()
+        wandb.log({"actor_loss": actor_loss})
         actor_optim.zero_grad()
         actor_loss.backward()
         actor_optim.step()
