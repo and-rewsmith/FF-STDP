@@ -99,7 +99,7 @@ class DecoderGroup:
 
         # Train Actor
         if self.prev_actor_neg_log_prob is not None:
-            actor_loss = self.prev_actor_neg_log_prob * -1 * rpe.clone().detach()
+            actor_loss = self.prev_actor_neg_log_prob * rpe.clone().detach()
             wandb.log({"actor_loss": actor_loss.item()})
             self.actor.optim.zero_grad()
             actor_loss.backward()  # need retain because we are using rpe in two places
