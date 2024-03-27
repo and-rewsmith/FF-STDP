@@ -1,17 +1,20 @@
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import gymnasium as gym
 
+ACTION_DIM = 3
+
 
 class Actor(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Actor, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
-            nn.Linear(128, output_dim),
+            nn.Linear(256, output_dim),
             nn.Softmax(dim=-1)
         )
 
@@ -23,9 +26,9 @@ class Critic(nn.Module):
     def __init__(self, input_dim):
         super(Critic, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
-            nn.Linear(128, 1)
+            nn.Linear(256, 1)
         )
 
     def forward(self, state):
@@ -36,28 +39,33 @@ torch.autograd.set_detect_anomaly(True)
 torch.manual_seed(1234)
 torch.set_printoptions(precision=10, sci_mode=False)
 
+environment_seeds = [4, 1, 2, 3, 4, 5, 6, 7]
 env = gym.make('MiniGrid-FourRooms-v0',
                render_mode='human',
-               max_steps=20)
+               max_steps=50)
 env.action_space.seed(42)
 state, _ = env.reset(seed=4)
 state_dim_1 = state["image"].shape[0]
 state_dim_2 = state["image"].shape[1]
 state_dim_3 = state["image"].shape[2]
 total_state_dim = state_dim_1 * state_dim_2 * state_dim_3
-action_dim = env.action_space.n
 
-actor = Actor(total_state_dim, action_dim)
+actor = Actor(total_state_dim, ACTION_DIM)
 critic = Critic(total_state_dim)
 
-actor_optim = optim.Adam(actor.parameters(), lr=1e-3)
+actor_optim = optim.Adam(actor.parameters(), lr=1e-4)
 critic_optim = optim.Adam(critic.parameters(), lr=1e-3)
 
-num_episodes = 1000
+num_episodes = 10000
 gamma = 0.99
 
 for episode in range(num_episodes):
-    state, _ = env.reset(seed=4)
+    if episode // 25 >= len(environment_seeds):
+        environment_seed = random.randint(0, 1000)
+    else:
+        environment_seed = environment_seeds[episode // 50]
+
+    state, _ = env.reset(seed=environment_seed)
     state = np.reshape(state["image"], [1, total_state_dim])
     done = False
     total_reward = 0
@@ -65,6 +73,7 @@ for episode in range(num_episodes):
     while not done:
         state_tensor = torch.FloatTensor(state)
         probs = actor(state_tensor)
+        print(probs)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
 
