@@ -110,8 +110,9 @@ def convert_observation_to_spike_input(
     return final_tensor
 
 
-# def is_in_bounds(agent_pos):
-#     return agent_pos[0] >= 6 and agent_pos[0] < 9 and agent_pos[1] >= 10 and agent_pos[1] < 13
+def is_in_bounds(agent_pos):
+    return agent_pos[0] >= 6 and agent_pos[0] < 9 and agent_pos[1] >= 10 and agent_pos[1] < 13
+
 
 torch.autograd.set_detect_anomaly(True)
 torch.manual_seed(1234)
@@ -151,7 +152,8 @@ for episode in range(num_episodes):
     #     environment_seed = environment_seeds[episode // EPISODES_SWITCH_AFTER]
 
     random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
-    environment_seed = environment_seeds[random_seed_from_seeds]
+    # environment_seed = environment_seeds[random_seed_from_seeds]
+    environment_seed = 4
 
     print(f"Episode: {episode}, Seed: {environment_seed}")
 
@@ -199,8 +201,8 @@ for episode in range(num_episodes):
         total_state_tensor_next = torch.cat(states, dim=1)
         total_state_tensor_next = torch.cat((total_state_tensor_next, torch.Tensor([[timestep]])), dim=1)
 
-        # if episode < EPISODES_SWITCH_AFTER and not is_in_bounds(env.agent_pos):
-        #     done = True
+        if episode < EPISODES_SWITCH_AFTER and not is_in_bounds(env.agent_pos):
+            done = True
 
         # Update Critic
         value = critic(total_state_tensor)
