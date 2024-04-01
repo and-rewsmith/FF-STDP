@@ -209,6 +209,8 @@ for episode in range(num_episodes):
 
         old_state = total_state_tensor  # TODOPRE: remove
         observation, reward, terminated, truncated, _ = env.step(action.item())
+
+        # TODOPRE: try this with increased reward the closer you are
         if 8 in observation["image"]:
             reward += 0.005
 
