@@ -7,8 +7,8 @@ import gymnasium as gym
 import wandb
 
 ACTION_DIM = 3
-ACTOR_LR = 1e-6 * 5
-CRITIC_LR = 1e-6 * 5
+ACTOR_LR = 1e-6
+CRITIC_LR = 1e-6
 
 EPISODES_SWITCH_AFTER = 250
 
@@ -209,6 +209,8 @@ for episode in range(num_episodes):
 
         old_state = total_state_tensor  # TODOPRE: remove
         observation, reward, terminated, truncated, _ = env.step(action.item())
+        if 8 in observation["image"]:
+            reward += 0.005
 
         if terminated:
             successes += 1
