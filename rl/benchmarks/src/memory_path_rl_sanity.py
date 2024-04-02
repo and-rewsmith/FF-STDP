@@ -226,11 +226,11 @@ failures = 0
 
 states = []
 for episode in range(num_episodes):
-    if episode // EPISODES_SWITCH_AFTER >= 1:
-        random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
-        environment_seed = environment_seeds[random_seed_from_seeds]
     if episode // EPISODES_SWITCH_AFTER >= len(environment_seeds):
         environment_seed = random.randint(0, 1000)
+    elif episode // EPISODES_SWITCH_AFTER >= 1:
+        random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
+        environment_seed = environment_seeds[random_seed_from_seeds]
     else:
         environment_seed = environment_seeds[0]
 
