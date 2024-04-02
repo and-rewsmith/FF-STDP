@@ -7,10 +7,10 @@ import gymnasium as gym
 import wandb
 
 ACTION_DIM = 3
-ACTOR_LR = 1e-6
-CRITIC_LR = 1e-6
+ACTOR_LR = 1e-6 * 5
+CRITIC_LR = 1e-6 * 5
 
-EPISODES_SWITCH_AFTER = 250
+EPISODES_SWITCH_AFTER = 500
 
 HIDDEN_LAYER_SIZE = 2048
 LAST_LAYER_SIZE = 64
@@ -199,6 +199,8 @@ torch.set_printoptions(precision=10, sci_mode=False)
 
 # environment_seeds = [4, 383, 428, 410, 147, 63, 698, 911, 919, 135, 904, 109, 146, 1, 178, 16, 189, 337]
 environment_seeds = [146, 4, 146, 1, 919, 178, 4, 16, 904]
+environment_seeds_harder = [154, 381, 613, 18, 886, 34, 134, 811, 142, 435,
+                            936, 147, 900, 389, 12, 752, 768, 304, 943, 712, 43, 613, 965]
 # environment_seeds = [146]
 env = gym.make('MiniGrid-FourRooms-v0',
                render_mode='human',
@@ -226,7 +228,10 @@ failures = 0
 
 states = []
 for episode in range(num_episodes):
-    if episode // EPISODES_SWITCH_AFTER >= len(environment_seeds):
+    if episode // EPISODES_SWITCH_AFTER == len(environment_seeds):
+        environment_seed.extend(environment_seeds_harder)
+
+    if episode // EPISODES_SWITCH_AFTER >= 2 * len(environment_seeds):
         environment_seed = random.randint(0, 1000)
     elif episode // EPISODES_SWITCH_AFTER >= 1:
         random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
@@ -291,7 +296,7 @@ for episode in range(num_episodes):
         if 8 in observation["image"]:
             reward += 0.005
         if action.item() == 2 and old_pos == new_pos:
-            reward -= 0.005
+            reward -= 0.01
 
         # goal_dist = agent_to_goal_distance(observation["image"])
         # print(goal_dist)
