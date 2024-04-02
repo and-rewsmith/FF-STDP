@@ -17,7 +17,13 @@ LAST_LAYER_SIZE = 64
 
 TIMESTEPS = 80
 
-NUM_STORED_STATES = 10
+NUM_STORED_STATES = 5
+
+"""
+TODO: feed in the timestep (oh or constant?)
+      reward based on proximity to agent
+      shrink model size to eliminate overfit
+"""
 
 
 class Actor(nn.Module):
@@ -123,13 +129,77 @@ def is_in_bounds(agent_pos):
     return agent_pos[0] >= 6 and agent_pos[0] < 9 and agent_pos[1] >= 10 and agent_pos[1] < 13
 
 
+def append_scalar_to_flattened_tensor_and_convert(tensor_3d, scalar_value):
+    """
+    Flattens a 3D tensor to a 1D array, appends a scalar value to it, and converts it to a PyTorch tensor.
+
+    Parameters:
+    - tensor_3d (np.ndarray): A 3D numpy array (tensor).
+    - scalar_value (int or float): A scalar value to append.
+
+    Returns:
+    - torch.Tensor: The resulting PyTorch tensor after flattening the tensor, appending the scalar, and converting.
+    """
+    # Flatten the 3D tensor to a 1D array
+    flattened_tensor = tensor_3d.flatten()
+
+    # Append the scalar to the flattened array
+    result_array = np.append(flattened_tensor, scalar_value)
+
+    # Convert the resulting numpy array to a PyTorch tensor
+    result_tensor = torch.from_numpy(result_array)
+
+    return result_tensor.unsqueeze(0)
+
+
+def find_positions(env_array):
+    # Initialize positions
+    agent_pos = None
+    goal_pos = None
+
+    # Iterate over each cell to find the agent and the goal
+    for i in range(env_array.shape[0]):  # Rows
+        for j in range(env_array.shape[1]):  # Columns
+            if env_array[i, j, 0] == 10:  # Agent code
+                agent_pos = (i, j)
+            elif env_array[i, j, 0] == 8:  # Goal code
+                goal_pos = (i, j)
+
+            if agent_pos and goal_pos:  # Stop if both are found
+                break
+
+    return agent_pos, goal_pos
+
+
+def calculate_distance(agent_pos, goal_pos):
+
+    print("agent pos: ", agent_pos)
+    print("goal pos: ", goal_pos)
+
+    # Calculate Euclidean distance using the Pythagorean theorem
+    return np.sqrt((agent_pos[0] - goal_pos[0])**2 + (agent_pos[1] - goal_pos[1])**2)
+
+
+def agent_to_goal_distance(env_array):
+    # Find agent and goal positions
+    agent_pos, goal_pos = find_positions(env_array)
+    agent_pos = env.agent_pos  # TODO: BROKEN!!
+
+    if agent_pos is not None and goal_pos is not None:
+        # Calculate and return the distance
+        return calculate_distance(agent_pos, goal_pos)
+    else:
+        # Return None if either agent or goal is not found
+        return 100
+
+
 torch.autograd.set_detect_anomaly(True)
 torch.manual_seed(1234)
 torch.set_printoptions(precision=10, sci_mode=False)
 
 # environment_seeds = [4, 383, 428, 410, 147, 63, 698, 911, 919, 135, 904, 109, 146, 1, 178, 16, 189, 337]
-# environment_seeds = [4, 146, 1, 919, 178, 4, 16, 904]
-environment_seeds = [146]
+environment_seeds = [146, 4, 146, 1, 919, 178, 4, 16, 904]
+# environment_seeds = [146]
 env = gym.make('MiniGrid-FourRooms-v0',
                render_mode='human',
                max_steps=TIMESTEPS)
@@ -138,8 +208,9 @@ state, _ = env.reset(seed=4)
 state_dim_1 = state["image"].shape[0]
 state_dim_2 = state["image"].shape[1]
 state_dim_3 = state["image"].shape[2]
-total_state_dim = NUM_STORED_STATES * (VISION_SIZE * VISION_SIZE *
-                                       (NUM_OBJECTS + NUM_COLORS + NUM_STATES) + NUM_DIRECTIONS) + TIMESTEPS
+# total_state_dim = NUM_STORED_STATES * (VISION_SIZE * VISION_SIZE *
+#                                        (NUM_OBJECTS + NUM_COLORS + NUM_STATES) + NUM_DIRECTIONS) + TIMESTEPS
+total_state_dim = NUM_STORED_STATES * 148 + 1
 
 actor = Actor(total_state_dim, ACTION_DIM)
 critic = Critic(total_state_dim)
@@ -155,11 +226,13 @@ failures = 0
 
 states = []
 for episode in range(num_episodes):
+    if episode // EPISODES_SWITCH_AFTER >= 1:
+        random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
+        environment_seed = environment_seeds[random_seed_from_seeds]
     if episode // EPISODES_SWITCH_AFTER >= len(environment_seeds):
         environment_seed = random.randint(0, 1000)
-        print(f"Episode: {episode}, Seed: {environment_seed}")
     else:
-        environment_seed = environment_seeds[episode // EPISODES_SWITCH_AFTER]
+        environment_seed = environment_seeds[0]
 
     # random_seed_from_seeds = random.randint(0, len(environment_seeds) - 1)
     # environment_seed = environment_seeds[random_seed_from_seeds]
@@ -170,7 +243,8 @@ for episode in range(num_episodes):
     state, _ = env.reset(seed=environment_seed)
     vision = state["image"]
     direction = state["direction"]
-    state = convert_observation_to_spike_input(vision, direction)
+    state = append_scalar_to_flattened_tensor_and_convert(vision, direction)
+    # state = convert_observation_to_spike_input(vision, direction)
 
     states.append(state)
     if len(states) > NUM_STORED_STATES:
@@ -180,9 +254,10 @@ for episode in range(num_episodes):
 
     timestep = 0
     total_state_tensor = torch.cat(states, dim=1)
-    timestep_tensor = torch.zeros(TIMESTEPS)
-    timestep_tensor[timestep-1] = 1
-    timestep_tensor = timestep_tensor.unsqueeze(0)
+    # timestep_tensor = torch.zeros(TIMESTEPS)
+    # timestep_tensor[timestep-1] = 1
+    # timestep_tensor = timestep_tensor.unsqueeze(0)
+    timestep_tensor = torch.Tensor([[timestep]])
     total_state_tensor = torch.cat((total_state_tensor, timestep_tensor), dim=1)
 
     done = False
@@ -208,11 +283,21 @@ for episode in range(num_episodes):
         #         input()
 
         old_state = total_state_tensor  # TODOPRE: remove
+        old_pos = env.agent_pos
         observation, reward, terminated, truncated, _ = env.step(action.item())
+        new_pos = env.agent_pos
 
         # TODOPRE: try this with increased reward the closer you are
         if 8 in observation["image"]:
             reward += 0.005
+        if action.item() == 2 and old_pos == new_pos:
+            reward -= 0.005
+
+        # goal_dist = agent_to_goal_distance(observation["image"])
+        # print(goal_dist)
+        # reward += 0.25 / goal_dist
+        # print("DISTANCE REWARD: ", 0.25 / goal_dist)
+        # input()
 
         if terminated:
             successes += 1
@@ -222,7 +307,8 @@ for episode in range(num_episodes):
         done = terminated or truncated
         vision = observation["image"]
         direction = observation["direction"]
-        next_single_state = convert_observation_to_spike_input(vision, direction)
+        next_single_state = append_scalar_to_flattened_tensor_and_convert(vision, direction)
+        # next_single_state = convert_observation_to_spike_input(vision, direction)
         total_reward += reward
 
         states.append(next_single_state)
@@ -231,9 +317,10 @@ for episode in range(num_episodes):
 
         timestep += 1
         total_state_tensor_next = torch.cat(states, dim=1)
-        timestep_tensor = torch.zeros(TIMESTEPS)
-        timestep_tensor[timestep-1] = 1
-        timestep_tensor = timestep_tensor.unsqueeze(0)
+        # timestep_tensor = torch.zeros(TIMESTEPS)
+        # timestep_tensor[timestep-1] = 1
+        # timestep_tensor = timestep_tensor.unsqueeze(0)
+        timestep_tensor = torch.Tensor([[timestep]])
         total_state_tensor_next = torch.cat((total_state_tensor_next, timestep_tensor), dim=1)
         # total_state_tensor_next = torch.cat((total_state_tensor_next, torch.Tensor([[timestep]])), dim=1)
 
