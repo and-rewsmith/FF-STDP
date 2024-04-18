@@ -13,11 +13,11 @@ CRITIC_LR = 1e-6 * 5
 EPISODES_SWITCH_AFTER = 500
 
 HIDDEN_LAYER_SIZE = 2048
-LAST_LAYER_SIZE = 64
+LAST_LAYER_SIZE = 32
 
 TIMESTEPS = 80
 
-NUM_STORED_STATES = 5
+NUM_STORED_STATES = 8
 
 """
 TODO: feed in the timestep (oh or constant?)
@@ -229,7 +229,7 @@ failures = 0
 states = []
 for episode in range(num_episodes):
     if episode // EPISODES_SWITCH_AFTER == len(environment_seeds):
-        environment_seed.extend(environment_seeds_harder)
+        environment_seeds.extend(environment_seeds_harder)
 
     if episode // EPISODES_SWITCH_AFTER >= 2 * len(environment_seeds):
         environment_seed = random.randint(0, 1000)
