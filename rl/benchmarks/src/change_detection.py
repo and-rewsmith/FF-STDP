@@ -3,6 +3,18 @@ import random
 
 from rl.benchmarks.src.change_detection_framework import ChangeDetectionBasic
 
+"""
+TODO: 
+implement actor critic
+assess lpl decodability on trained policy (train policy helps decoding the reward)
+implement the bridge from state to the LPL network, and from LPL network to actor / critic
+batch processing
+if that doesn't work, implement some sort of search
+
+verify metaplasticity
+
+"""
+
 
 def main():
     # Create the ChangeDetectionBasic environment
