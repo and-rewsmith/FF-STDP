@@ -5,10 +5,12 @@ from torch import nn
 from torch import optim
 import torch
 import wandb
+from profilehooks import profile
+
+
 from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
-
 from rl.benchmarks.src.change_detection_framework import ChangeDetectionBasic
 
 """
@@ -87,9 +89,11 @@ def generate_state_tensor(observation, reward, env):
     return state_one_hot
 
 
+@profile(stdout=False, filename='baseline.prof', skip=False)
 def main():
     # Create the ChangeDetectionBasic environment
-    env = ChangeDetectionBasic()
+    # env = ChangeDetectionBasic() # FIX!
+    env = ChangeDetectionBasic(duration=0.7)
 
     # Create the LPL Network
     settings = Settings(

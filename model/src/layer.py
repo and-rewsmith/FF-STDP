@@ -558,8 +558,8 @@ class Layer(nn.Module):
                 # TODO: Remove this when we decouple the logging for the
                 # pointcloud benchmark from the model code
                 self.data: torch.Tensor = data
-                self.__log_equation_context(
-                    synaptic_weight_equation, dw_dt, spike, self.lif.mem())
+                # self.__log_equation_context(
+                #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     from_layer: Self) -> None:
