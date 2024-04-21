@@ -15,15 +15,20 @@ from rl.benchmarks.src.change_detection_framework import ChangeDetectionBasic
 
 """
 TODO: 
-implement actor critic
-implement the bridge from state to the LPL network, and from LPL network to actor / critic
+/ implement actor critic
+/ implement the bridge from state to the LPL network, and from LPL network to actor / critic
+
+imitation learn actor
+- random offset past correct image show
+- somehow we need to detect trials
+
 batch processing
 if that doesn't work, implement some sort of search
 
-verify metaplasticity
+verify metaplasticity? (not actionable)
 """
 
-ACTION_DIM = 1
+ACTION_DIM = 2
 ACTOR_LR = 1e-6 * 5
 CRITIC_LR = 1e-6 * 5
 
@@ -89,11 +94,11 @@ def generate_state_tensor(observation, reward, env):
     return state_one_hot
 
 
-@profile(stdout=False, filename='baseline.prof', skip=False)
+@profile(stdout=False, filename='baseline.prof', skip=True)
 def main():
     # Create the ChangeDetectionBasic environment
     # env = ChangeDetectionBasic() # FIX!
-    env = ChangeDetectionBasic(duration=0.7)
+    env = ChangeDetectionBasic()
 
     # Create the LPL Network
     settings = Settings(
@@ -157,14 +162,21 @@ def main():
         observation, reward, done, info = env.step(0)  # no lick to start (necessary because obs not provided on reset)
         net.process_data_single_timestep(generate_state_tensor(observation, reward, env))
         network_state = torch.cat(net.layer_activations(), dim=1)
+        count = 0
         while not done:
             # Choose an action (0 for no lick, 1 for lick)
             probs = actor(network_state)
+            if count % 100 == 0:
+                print(probs)
+            count += 1
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
 
             # Take a step in the environment
             observation, reward, done, info = env.step(action)
+            if info['trial_complete']:
+                print("New trial started!")
+                input()
 
             # one hot encode observation and reward
             state_one_hot = generate_state_tensor(observation, reward, env)
@@ -187,7 +199,6 @@ def main():
 
             # actor loss
             actor_loss = -dist.log_prob(action) * td_error.detach()
-            prev_actor_loss = actor_loss.item()
             actor_optim.zero_grad()
             actor_loss.backward()
             actor_optim.step()
