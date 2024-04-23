@@ -5,11 +5,11 @@ import numpy as np
 import torch
 
 # State type constants
-STATE_ABORT = 0
-STATE_TIMEOUT = 1
-STATE_IGNORE = 2
-STATE_REWARD = 3
-STATE_SUCCESS = 4
+STATE_ABORT = 0.0
+STATE_TIMEOUT = 1.0
+STATE_IGNORE = 2.0
+STATE_REWARD = 3.0
+STATE_SUCCESS = 4.0
 
 
 class ChangeDetectionBasic(gym.Env):
@@ -44,12 +44,13 @@ class ChangeDetectionBasic(gym.Env):
             print("------changing stimulus")
             self.blank_showing = False
             # Change to the next stimulus with a certain probability
-            valid_change_stimulus = torch.rand(self.batch_size).to(device=self.device) < self.change_probability
+            valid_change_stimulus = torch.rand(self.batch_size, dtype=torch.float).to(
+                device=self.device) < self.change_probability
             valid_change_stimulus.logical_and_((self.current_stimulus == self.next_stimulus).logical_not_())
             valid_change_stimulus.logical_and_((self.reward_state == STATE_TIMEOUT).logical_not_())
             self.current_stimulus = torch.where(valid_change_stimulus, self.next_stimulus, self.current_stimulus)
             self.reward_state = torch.where(valid_change_stimulus, torch.tensor(
-                STATE_IGNORE), self.reward_state).to(device=self.device)  # Enter ignore state if stimulus changed
+                STATE_IGNORE, dtype=torch.float), self.reward_state).to(device=self.device)  # Enter ignore state if stimulus changed
         elif not self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), self.flash_duration):
             print("------showing blank")
             self.blank_showing = True
@@ -57,19 +58,14 @@ class ChangeDetectionBasic(gym.Env):
 
         # Transition from ignore state to reward state
         ignore_time = self.flash_duration * self.ignore_ratio
-        # print(f"ignore_time: {ignore_time}")
-        # print(f"flash_duration: {self.flash_duration}")
-        # print(f"blank_duration: {self.blank_duration}")
-        # print(
-        #     f"self.time % (self.flash_duration + self.blank_duration): {self.time % (self.flash_duration + self.blank_duration)}")
-        # print(f"reward state: {self.reward_state}")
-        self.reward_state = torch.where((self.reward_state == STATE_IGNORE).to(device=self.device) & (self.time % (
-            self.flash_duration + self.blank_duration) >= ignore_time), torch.tensor(STATE_REWARD).to(device=self.device), self.reward_state)
+        self.reward_state = torch.where((self.reward_state == STATE_IGNORE).to(device=self.device) & ((self.time % (
+            self.flash_duration + self.blank_duration)) >= ignore_time), torch.tensor(STATE_REWARD, dtype=torch.float).to(device=self.device), self.reward_state)
 
         # Determine the current observation
         blank_showing_tensor = torch.tensor([self.blank_showing] * self.batch_size,
                                             dtype=torch.bool).to(device=self.device)
-        observation = torch.where(blank_showing_tensor, torch.tensor(-1).to(device=self.device), self.current_stimulus)
+        observation = torch.where(blank_showing_tensor, torch.tensor(-1.0,
+                                  dtype=torch.float).to(device=self.device), self.current_stimulus)
 
         # Update reward state based on the agent's action
         lick_action = action == 1
@@ -77,13 +73,13 @@ class ChangeDetectionBasic(gym.Env):
         incorrect_lick = lick_action & (torch.eq(self.reward_state, STATE_REWARD) |
                                         torch.eq(self.reward_state, STATE_IGNORE)).logical_not_()
         self.reward_state = torch.where(incorrect_lick, torch.tensor(
-            STATE_TIMEOUT).to(device=self.device), self.reward_state)  # Enter timeout state if incorrect lick
+            STATE_TIMEOUT, dtype=torch.float).to(device=self.device), self.reward_state)  # Enter timeout state if incorrect lick
         self.reward_state = torch.where(correct_lick, torch.tensor(
-            STATE_SUCCESS).to(device=self.device), self.reward_state)  # Enter success state if correct lick
+            STATE_SUCCESS, dtype=torch.float).to(device=self.device), self.reward_state)  # Enter success state if correct lick
 
         # Calculate reward
-        reward = torch.where(correct_lick, torch.tensor(1.0).to(
-            device=self.device), torch.tensor(0.0).to(device=self.device))
+        reward = torch.where(correct_lick, torch.tensor(1.0, dtype=torch.float).to(
+            device=self.device), torch.tensor(0.0, dtype=torch.float).to(device=self.device))
 
         # Check if the episode is done
         done = (self.flash_alternations >= self.max_flash_alternations)
@@ -98,19 +94,20 @@ class ChangeDetectionBasic(gym.Env):
         return observation, reward, done, info
 
     def reset(self):
-        self.time = 0
+        self.time = 0.0
         self.flash_alternations = 0
 
         initial_stimulus_random_indices = torch.randint(
             0, len(self.observation_space), (self.batch_size,)).to(device=self.device)
-        self.initial_stimulus = torch.Tensor([self.observation_space[i]
-                                             for i in initial_stimulus_random_indices]).to(device=self.device)
+        self.initial_stimulus = torch.tensor([float(self.observation_space[i])
+                                             for i in initial_stimulus_random_indices], dtype=torch.float).to(device=self.device)
         self.current_stimulus = self.initial_stimulus
 
-        next_stimulus_offsets = torch.randint(1, len(self.observation_space), (self.batch_size,)).to(device=self.device)
+        next_stimulus_offsets = torch.randint(1, len(self.observation_space),
+                                              (self.batch_size,), dtype=torch.float).to(device=self.device)
         self.next_stimulus = (self.current_stimulus + next_stimulus_offsets) % len(self.observation_space)
 
-        self.reward_state = torch.zeros(self.batch_size).to(device=self.device)
+        self.reward_state = torch.zeros(self.batch_size, dtype=torch.float).to(device=self.device)
 
         self.blank_showing = False
 
