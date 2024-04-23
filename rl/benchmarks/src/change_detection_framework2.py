@@ -16,7 +16,7 @@ class ChangeDetectionBasic(gym.Env):
 
     # all time in seconds
     # TODOPRE: adjust durations
-    def __init__(self, batch_size=1, flash_duration=10, blank_duration=10, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.3, max_flash_alternations=8):
+    def __init__(self, batch_size=1, flash_duration=10, blank_duration=10, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.8, max_flash_alternations=8):
         self.batch_size = batch_size
         self.flash_duration = flash_duration
         self.blank_duration = blank_duration
@@ -45,6 +45,7 @@ class ChangeDetectionBasic(gym.Env):
             self.blank_showing = False
             # Change to the next stimulus with a certain probability
             change_stimulus = torch.rand(self.batch_size) < self.change_probability
+            change_stimulus.logical_and_((self.current_stimulus == self.next_stimulus).logical_not_())
             self.current_stimulus = torch.where(change_stimulus, self.next_stimulus, self.current_stimulus)
             self.reward_state = torch.where(change_stimulus, torch.tensor(
                 STATE_IGNORE), self.reward_state)  # Enter ignore state if stimulus changed
@@ -55,8 +56,14 @@ class ChangeDetectionBasic(gym.Env):
 
         # Transition from ignore state to reward state
         ignore_time = self.flash_duration * self.ignore_ratio
+        print(f"ignore_time: {ignore_time}")
+        print(f"flash_duration: {self.flash_duration}")
+        print(f"blank_duration: {self.blank_duration}")
+        print(
+            f"self.time % (self.flash_duration + self.blank_duration): {self.time % (self.flash_duration + self.blank_duration)}")
+        print(f"reward state: {self.reward_state}")
         self.reward_state = torch.where((self.reward_state == STATE_IGNORE) & (self.time % (
-            self.flash_duration + self.blank_duration) == ignore_time), torch.tensor(STATE_REWARD), self.reward_state)
+            self.flash_duration + self.blank_duration) >= ignore_time), torch.tensor(STATE_REWARD), self.reward_state)
 
         # Determine the current observation
         blank_showing_tensor = torch.tensor([self.blank_showing] * self.batch_size, dtype=torch.bool)
@@ -65,7 +72,7 @@ class ChangeDetectionBasic(gym.Env):
         # Update reward state based on the agent's action
         lick_action = action == 1
         correct_lick = lick_action & (self.reward_state == STATE_REWARD)
-        incorrect_lick = lick_action & (self.reward_state != STATE_REWARD)
+        incorrect_lick = lick_action & (self.reward_state != STATE_REWARD and self.reward_state != STATE_IGNORE)
         self.reward_state = torch.where(incorrect_lick, torch.tensor(
             STATE_TIMEOUT), self.reward_state)  # Enter timeout state if incorrect lick
         self.reward_state = torch.where(correct_lick, torch.tensor(

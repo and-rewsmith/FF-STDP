@@ -125,10 +125,10 @@ if __name__ == '__main__':
 
     num_episodes = 1
 
+    total_reward = torch.zeros(BATCH_SIZE)
     for episode in range(num_episodes):
         observation = env.reset()
         done = torch.zeros(BATCH_SIZE, dtype=torch.bool)
-        total_reward = torch.zeros(BATCH_SIZE)
 
         observation, reward, done, info = env.step(torch.zeros(BATCH_SIZE, dtype=torch.long))
         net.process_data_single_timestep(generate_state_tensor(observation, reward, env))
@@ -136,21 +136,36 @@ if __name__ == '__main__':
         original_observation = observation
         should_lick = torch.zeros(BATCH_SIZE, dtype=torch.bool)
         episode_failed = torch.ones(BATCH_SIZE, dtype=torch.bool)
+        rewarded = torch.zeros(BATCH_SIZE, dtype=torch.bool)
 
         while not done:
             probs = actor(network_state)
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
 
-            print(f"time: {env.time}, observation: {observation[0]}, action: {action[0]}, reward: {reward[0]}")
-
             if episode % 2 == 0:
-                action = should_lick.long()
+                optimal_action = torch.zeros(BATCH_SIZE, dtype=torch.long)
+                optimal_action.logical_or_(should_lick)
+                optimal_action.logical_and_(rewarded.logical_not())
+                random_sample = torch.rand(BATCH_SIZE)
+                optimal_action.logical_and_(random_sample < 0.5)
+                action = optimal_action
 
             observation, reward, done, info = env.step(action)
+            print(f"time: {env.time}, observation: {observation[0]}, action: {action[0]}, reward: {reward[0]}")
+            print()
+
+            rewarded.logical_or_(reward == 1)
+
+            if reward[0] == 1:
+                input()
+
+            # TODOPRE: we need to do something with this, maybe useful for stopped samples if we decide to stop them
             # original_observation = torch.where(done, observation, original_observation)
+
             episode_failed = torch.where(reward == 1, False, episode_failed)
-            should_lick = torch.logical_or(observation != -1, observation != original_observation)
+            should_lick = torch.logical_and(observation != -1, observation != original_observation)
+            print(should_lick)
 
             state_one_hot = generate_state_tensor(observation, reward, env)
             net.process_data_single_timestep(state_one_hot)
@@ -169,7 +184,7 @@ if __name__ == '__main__':
 
             if episode % 2 == 0:
                 # print(f"optimal action: {should_lick[0]}, episode failed: {episode_failed[0]}")
-                optimal_action = should_lick & episode_failed
+                optimal_action = optimal_action & episode_failed
                 non_optimal_action = ~optimal_action
                 optimal_action_probs = torch.zeros_like(probs)
                 optimal_action_prob = 0.5
