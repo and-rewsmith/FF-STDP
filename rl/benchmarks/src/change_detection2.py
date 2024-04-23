@@ -123,7 +123,7 @@ if __name__ == '__main__':
     actor_optim = optim.Adam(actor.parameters(), lr=ACTOR_LR)
     critic_optim = optim.Adam(critic.parameters(), lr=CRITIC_LR)
 
-    num_episodes = 5
+    num_episodes = 1
 
     for episode in range(num_episodes):
         observation = env.reset()
@@ -137,7 +137,7 @@ if __name__ == '__main__':
         should_lick = torch.zeros(BATCH_SIZE, dtype=torch.bool)
         episode_failed = torch.ones(BATCH_SIZE, dtype=torch.bool)
 
-        while not done.all():
+        while not done:
             probs = actor(network_state)
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
@@ -148,7 +148,7 @@ if __name__ == '__main__':
                 action = should_lick.long()
 
             observation, reward, done, info = env.step(action)
-            original_observation = torch.where(done, observation, original_observation)
+            # original_observation = torch.where(done, observation, original_observation)
             episode_failed = torch.where(reward == 1, False, episode_failed)
             should_lick = torch.logical_or(observation != -1, observation != original_observation)
 
@@ -158,7 +158,8 @@ if __name__ == '__main__':
 
             next_value = critic(next_network_state)
             value = critic(network_state)
-            td_error = reward + (GAMMA * next_value * (1 - done.float())) - value
+            done_int = 1 if done else 0
+            td_error = reward + (GAMMA * next_value * (1 - done)) - value
 
             critic_loss = td_error ** 2
             critic_optim.zero_grad()

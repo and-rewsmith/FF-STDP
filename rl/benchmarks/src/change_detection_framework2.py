@@ -16,13 +16,14 @@ class ChangeDetectionBasic(gym.Env):
 
     # all time in seconds
     # TODOPRE: adjust durations
-    def __init__(self, batch_size=1, flash_duration=10, blank_duration=10, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.3):
+    def __init__(self, batch_size=1, flash_duration=10, blank_duration=10, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.3, max_flash_alternations=8):
         self.batch_size = batch_size
         self.flash_duration = flash_duration
         self.blank_duration = blank_duration
         self.ignore_ratio = ignore_ratio
         self.number_of_stimuli = number_of_possible_stimuli
         self.change_probability = change_probability
+        self.max_flash_alternations = max_flash_alternations
 
         self.observation_space = list(range(self.number_of_stimuli))
         self.action_space = [0, 1]  # [no_lick, lick]
@@ -39,15 +40,6 @@ class ChangeDetectionBasic(gym.Env):
         self.time += 1
 
         # Check if it's time to switch between stimulus and blank
-        # print(f"blank showing: {self.blank_showing}")
-        # print(f"time: {self.time}")
-        # print(f"flash_duration: {self.flash_duration}")
-        # print(f"blank_duration: {self.blank_duration}")
-        # print(f"flash_duration + blank_duration: {self.flash_duration + self.blank_duration}")
-        # print(f"time % (flash_duration + blank_duration): {self.time % (self.flash_duration + self.blank_duration)}")
-        # print(
-        #     f"condition: {not self.blank_showing and self.time % (self.flash_duration + self.blank_duration) == self.flash_duration}")
-        # print()
         if self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), 0):
             print("------changing stimulus")
             self.blank_showing = False
@@ -59,6 +51,7 @@ class ChangeDetectionBasic(gym.Env):
         elif not self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), self.flash_duration):
             print("------showing blank")
             self.blank_showing = True
+            self.flash_alternations += 1
 
         # Transition from ignore state to reward state
         ignore_time = self.flash_duration * self.ignore_ratio
@@ -82,10 +75,7 @@ class ChangeDetectionBasic(gym.Env):
         reward = torch.where(correct_lick, torch.tensor(1.0), torch.tensor(0.0))
 
         # Check if the episode is done
-        # TODO: mark the ones that have reached the reward or timeout state as
-        # done, then stop processing actions (or think about best interface for
-        # this)
-        done = torch.zeros(self.batch_size, dtype=torch.bool)  # You can define your own termination criteria here
+        done = (self.flash_alternations >= self.max_flash_alternations)
 
         # Prepare info dict
         info = {
@@ -98,6 +88,7 @@ class ChangeDetectionBasic(gym.Env):
 
     def reset(self):
         self.time = 0
+        self.flash_alternations = 0
 
         initial_stimulus_random_indices = torch.randint(0, len(self.observation_space), (self.batch_size,))
         self.initial_stimulus = torch.Tensor([self.observation_space[i] for i in initial_stimulus_random_indices])
