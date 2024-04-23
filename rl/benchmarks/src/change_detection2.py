@@ -23,11 +23,15 @@ CRITIC_LR = 1e-6 * 5
 HIDDEN_LAYER_SIZE = 2048
 LAST_LAYER_SIZE = 32
 
-BATCH_SIZE = 1
+BATCH_SIZE = 100
 
 ENCODE_SPIKE_TRAINS = False
 
 GAMMA = 0.99
+
+OPTIMAL_ACTION_PROB = 0.5
+
+DEVICE = "mps"
 
 
 class Actor(nn.Module):
@@ -66,7 +70,7 @@ class Critic(nn.Module):
 
 
 def generate_state_tensor(observation, reward, env):
-    observation_one_hot = torch.zeros(BATCH_SIZE, env.number_of_stimuli + 1)
+    observation_one_hot = torch.zeros(BATCH_SIZE, env.number_of_stimuli + 1).to(device=DEVICE)
     observation_long = observation.long() + 1
     observation_one_hot[range(BATCH_SIZE), observation_long] = 1
     reward_tensor = reward.clone().detach().unsqueeze(1)
@@ -76,7 +80,7 @@ def generate_state_tensor(observation, reward, env):
 
 if __name__ == '__main__':
     # Create the ChangeDetectionBasic environment
-    env = ChangeDetectionBasic(batch_size=BATCH_SIZE)
+    env = ChangeDetectionBasic(batch_size=BATCH_SIZE, device=DEVICE)
 
     # Create the LPL Network
     settings = Settings(
@@ -99,7 +103,7 @@ if __name__ == '__main__':
         tau_fall_alpha=.05,
         tau_rise_epsilon=0.002,
         tau_fall_epsilon=0.02,
-        device=torch.device("cpu")
+        device=torch.device(DEVICE)
     )
 
     wandb.init(
@@ -123,20 +127,20 @@ if __name__ == '__main__':
     actor_optim = optim.Adam(actor.parameters(), lr=ACTOR_LR)
     critic_optim = optim.Adam(critic.parameters(), lr=CRITIC_LR)
 
-    num_episodes = 1
+    num_episodes = 1000
 
-    total_reward = torch.zeros(BATCH_SIZE)
+    total_reward = torch.zeros(BATCH_SIZE).to(device=DEVICE)
     for episode in range(num_episodes):
         observation = env.reset()
-        done = torch.zeros(BATCH_SIZE, dtype=torch.bool)
+        done = torch.zeros(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
 
-        observation, reward, done, info = env.step(torch.zeros(BATCH_SIZE, dtype=torch.long))
+        observation, reward, done, info = env.step(torch.zeros(BATCH_SIZE, dtype=torch.long).to(device=DEVICE))
         net.process_data_single_timestep(generate_state_tensor(observation, reward, env))
         network_state = torch.cat(net.layer_activations(), dim=1)
         original_observation = observation
-        should_lick = torch.zeros(BATCH_SIZE, dtype=torch.bool)
-        episode_failed = torch.ones(BATCH_SIZE, dtype=torch.bool)
-        rewarded = torch.zeros(BATCH_SIZE, dtype=torch.bool)
+        should_lick = torch.zeros(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
+        episode_failed = torch.ones(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
+        rewarded = torch.zeros(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
 
         while not done:
             probs = actor(network_state)
@@ -144,28 +148,30 @@ if __name__ == '__main__':
             action = dist.sample()
 
             if episode % 2 == 0:
-                optimal_action = torch.zeros(BATCH_SIZE, dtype=torch.long)
+                optimal_action = torch.zeros(BATCH_SIZE, dtype=torch.long).to(device=DEVICE)
                 optimal_action.logical_or_(should_lick)
                 optimal_action.logical_and_(rewarded.logical_not())
-                random_sample = torch.rand(BATCH_SIZE)
-                optimal_action.logical_and_(random_sample < 0.5)
+                random_sample = torch.rand(BATCH_SIZE).to(device=DEVICE)
+                optimal_action.logical_and_(random_sample < OPTIMAL_ACTION_PROB)
                 action = optimal_action
 
             observation, reward, done, info = env.step(action)
-            print(f"time: {env.time}, observation: {observation[0]}, action: {action[0]}, reward: {reward[0]}")
-            print()
+            # print(f"time: {env.time}, observation: {observation[0]}, action: {action[0]}, reward: {reward[0]}")
 
             rewarded.logical_or_(reward == 1)
 
-            if reward[0] == 1:
-                input()
+            # print(env.reward_state)
+            if episode % 2 == 1 and rewarded.any():
+                print("+++++++++++++++++++++++++++++++++ REWARD IN NON IMITATION LEARNING!")
+            #     print(reward)
+            #     print(rewarded)
+            #     input()
 
             # TODOPRE: we need to do something with this, maybe useful for stopped samples if we decide to stop them
             # original_observation = torch.where(done, observation, original_observation)
 
             episode_failed = torch.where(reward == 1, False, episode_failed)
             should_lick = torch.logical_and(observation != -1, observation != original_observation)
-            print(should_lick)
 
             state_one_hot = generate_state_tensor(observation, reward, env)
             net.process_data_single_timestep(state_one_hot)
@@ -186,12 +192,13 @@ if __name__ == '__main__':
                 # print(f"optimal action: {should_lick[0]}, episode failed: {episode_failed[0]}")
                 optimal_action = optimal_action & episode_failed
                 non_optimal_action = ~optimal_action
-                optimal_action_probs = torch.zeros_like(probs)
-                optimal_action_prob = 0.5
+                optimal_action_probs = torch.zeros_like(probs).to(device=DEVICE)
+                optimal_action_prob = OPTIMAL_ACTION_PROB
                 complement_prob = 1 - optimal_action_prob
                 optimal_action_probs[range(BATCH_SIZE), optimal_action.long()] = optimal_action_prob
                 optimal_action_probs[range(BATCH_SIZE), non_optimal_action.long()] = complement_prob
-                actor_loss = F.mse_loss(probs, optimal_action_probs)
+                # actor_loss = F.mse_loss(probs, optimal_action_probs)
+                actor_loss = -dist.log_prob(action) * td_error.detach()
             else:
                 actor_loss = -dist.log_prob(action) * td_error.detach()
 
