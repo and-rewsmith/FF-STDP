@@ -4,6 +4,7 @@ import gymnasium as gym
 from torch import nn
 from torch import optim
 import torch
+import torch.nn.functional as F
 import wandb
 from profilehooks import profile
 
@@ -17,6 +18,8 @@ from rl.benchmarks.src.change_detection_framework import ChangeDetectionBasic
 TODO: 
 / implement actor critic
 / implement the bridge from state to the LPL network, and from LPL network to actor / critic
+
+MKAE ACTION TAKEN BE ACTUAL BEST
 
 imitation learn actor
 - random offset past correct image show
@@ -98,7 +101,7 @@ def generate_state_tensor(observation, reward, env):
 def main():
     # Create the ChangeDetectionBasic environment
     # env = ChangeDetectionBasic() # FIX!
-    env = ChangeDetectionBasic()
+    env = ChangeDetectionBasic(flash_duration=0.02, response_window=(0.01, 0.1), blank_duration=0.02)
 
     # Create the LPL Network
     settings = Settings(
@@ -152,6 +155,7 @@ def main():
     num_episodes = 5
 
     # Run the episodes
+    failed_trials = 0
     for episode in range(num_episodes):
         # Reset the environment for a new episode
         observation = env.reset()
@@ -162,21 +166,44 @@ def main():
         observation, reward, done, info = env.step(0)  # no lick to start (necessary because obs not provided on reset)
         net.process_data_single_timestep(generate_state_tensor(observation, reward, env))
         network_state = torch.cat(net.layer_activations(), dim=1)
-        count = 0
+        original_observation = observation
+        should_lick = False
+        trial_failed = True
+        trial_count = 1
         while not done:
+            if info['trial_complete']:
+                wandb.log({"trial_count": trial_count})
+                trial_count += 1
+                should_lick = False
+                if trial_failed:
+                    failed_trials += 1
+                print("Trial count: ", trial_count)
+                print("Trial failed: ", trial_failed)
+                print("failed trials: ", failed_trials)
+                trial_failed = True
+                wandb.log({"failed_trials": failed_trials})
+                print("New trial started!")
+                input(f"trial using imitation learning: {trial_count % 2 == 0}")
+
             # Choose an action (0 for no lick, 1 for lick)
             probs = actor(network_state)
-            if count % 100 == 0:
-                print(probs)
-            count += 1
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
 
+            if trial_count % 2 == 0:
+                action = 1 if should_lick else 0
+
             # Take a step in the environment
+            should_reset_original_observation = info['trial_complete']
             observation, reward, done, info = env.step(action)
-            if info['trial_complete']:
-                print("New trial started!")
-                input()
+            if should_reset_original_observation:
+                original_observation = observation
+
+            if reward == 1:
+                trial_failed = False
+
+            if not (observation == "blank" or observation == original_observation):
+                should_lick = True
 
             # one hot encode observation and reward
             state_one_hot = generate_state_tensor(observation, reward, env)
@@ -198,11 +225,22 @@ def main():
             wandb.log({"critic_loss": critic_loss})
 
             # actor loss
-            actor_loss = -dist.log_prob(action) * td_error.detach()
-            actor_optim.zero_grad()
-            actor_loss.backward()
-            actor_optim.step()
-            wandb.log({"actor_loss": actor_loss})
+            if trial_count % 2 == 0:  # interspersed imitation learning
+                optimal_action = 1 if should_lick and trial_failed else 0
+                non_optimal_action = 1 if optimal_action == 0 else 0
+                print(f"Optimal action: {optimal_action}")
+                optimal_action_probs = torch.zeros_like(probs)
+                optimal_action_prob = 0.5
+                complement_prob = 1 - optimal_action_prob
+                optimal_action_probs[0][optimal_action] = optimal_action_prob
+                optimal_action_probs[0][non_optimal_action] = complement_prob
+                actor_loss = F.mse_loss(probs, optimal_action_probs)
+            else:
+                actor_loss = -dist.log_prob(action) * td_error.detach()
+                actor_optim.zero_grad()
+                actor_loss.backward()
+                actor_optim.step()
+                wandb.log({"actor_loss": actor_loss})
 
             # Update the total reward for the episode
             total_reward += reward

@@ -74,13 +74,16 @@ class ChangeDetectionBasic(gym.Env):
             dt_change = self.time - self.last_change_start
             if dt_change < self.ignore_duration:
                 self.reward_state = 'ignore'
+                print("-----------------entered ignore state")
             elif dt_change < self.response_duration:
                 if self.trial_type == 'go':
                     self.reward_state = 'reward'
+                    print("-----------------entered reward state")
             else:
                 self.reward_state = 'grace'
         elif self.reward_state != 'timeout':
             self.reward_state = 'abort'
+            print("-----------------entered abort state")
 
         # evaluate consequences of action (1==licking, 0==no licking)
         if self.reward_state == 'timeout' and action == 1:
@@ -93,6 +96,7 @@ class ChangeDetectionBasic(gym.Env):
             if action == 1:
                 self.reward_state = 'timeout'
                 self.number_of_aborts += 1
+                print("-----------------------------entered timeout state")
 
                 # set new trial start at next onset flash that is longer than self.timeout away
                 self.last_trial_start = self.last_flash_start + self.flash_blank_duration  # start new trial on next flash onset
@@ -101,6 +105,7 @@ class ChangeDetectionBasic(gym.Env):
 
         if self.reward_state == 'reward':
             if action == 1 and self.rewarded == False:
+                print("---------------------received reward")
                 reward = 1
                 self.rewarded = True
 
@@ -156,6 +161,7 @@ class ChangeDetectionBasic(gym.Env):
         self.last_trial_start = 0
 
     def start_new_trial(self):
+        print("-------------------starting new trial")
         self.change_on_flash = self.get_next_change_flash()
         # self.next_change_time = self.get_next_change_time()
         self.initial_stimulus = self.get_next_stimulus()
@@ -171,6 +177,7 @@ class ChangeDetectionBasic(gym.Env):
         self.start_same_trial()
 
     def start_same_trial(self):
+        print("-------------------starting same trial")
         self.completed_flashes = 0
         self.reward_state = 'abort'
 
