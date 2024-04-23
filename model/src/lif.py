@@ -4,6 +4,17 @@ import torch
 import torch.nn as nn
 
 
+class SpikeOperator():
+
+    @staticmethod
+    def forward(mem: torch.Tensor,
+                threshold: torch.Tensor) -> torch.Tensor:
+        input = mem - threshold
+        spk = torch.zeros_like(input)
+        spk[input > 0] = 1.0
+        return spk
+
+
 class LIF(nn.Module):
     def __init__(self, beta: float, threshold: float = 1.0):
         """
@@ -28,7 +39,6 @@ class LIF(nn.Module):
         # Initialize decay rate beta and threshold
         self.beta = beta
         self.threshold = threshold
-        self.spike_op = self.SpikeOperator.apply
         self.mem: Optional[torch.Tensor] = None
         self.prereset_mem: Optional[torch.Tensor] = None
 
@@ -43,20 +53,10 @@ class LIF(nn.Module):
         self.prereset_mem = self.mem.clone()
 
         # Spike if membrane potential exceeds threshold
-        spk: torch.Tensor = self.spike_op(self.mem, self.threshold)
+        spk: torch.Tensor = SpikeOperator.forward(self.mem, self.threshold)
 
         # Reset the membrane potential if spiked
         reset = spk * self.threshold
         self.mem -= reset  # type: ignore [operator]
 
         return spk
-
-    class SpikeOperator(torch.autograd.Function):
-
-        @staticmethod
-        def forward(ctx: Any, mem: torch.Tensor,
-                    threshold: torch.Tensor) -> torch.Tensor:
-            input = mem - threshold
-            spk = torch.zeros_like(input)
-            spk[input > 0] = 1.0
-            return spk

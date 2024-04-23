@@ -20,7 +20,7 @@ ACTION_DIM = 2
 ACTOR_LR = 1e-6 * 5
 CRITIC_LR = 1e-6 * 5
 
-HIDDEN_LAYER_SIZE = 2048
+HIDDEN_LAYER_SIZE = 256
 LAST_LAYER_SIZE = 32
 
 BATCH_SIZE = 100
@@ -78,13 +78,14 @@ def generate_state_tensor(observation, reward, env):
     return state_one_hot
 
 
-if __name__ == '__main__':
+@profile(stdout=False, filename='baseline.prof', skip=True)
+def main():
     # Create the ChangeDetectionBasic environment
-    env = ChangeDetectionBasic(batch_size=BATCH_SIZE, device=DEVICE)
+    env = ChangeDetectionBasic(batch_size=BATCH_SIZE, device=DEVICE, max_flash_alternations=6)
 
     # Create the LPL Network
     settings = Settings(
-        layer_sizes=[100, 100, 100, 100],
+        layer_sizes=[500, 500, 500, 500],
         data_size=env.number_of_stimuli + 2,
         batch_size=BATCH_SIZE,
         learning_rate=0.01,
@@ -116,7 +117,7 @@ if __name__ == '__main__':
     )
 
     net = Net(settings).to(device=settings.device)
-    visualizer = NetworkVisualizer(net)
+    # visualizer = NetworkVisualizer(net)
 
     actor_input_dim = sum(settings.layer_sizes)
     actor = Actor(actor_input_dim, ACTION_DIM).to(device=settings.device)
@@ -142,6 +143,7 @@ if __name__ == '__main__':
         episode_failed = torch.ones(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
         rewarded = torch.zeros(BATCH_SIZE, dtype=torch.bool).to(device=DEVICE)
 
+        step_count = 0
         while not done:
             probs = actor(network_state)
             dist = torch.distributions.Categorical(probs)
@@ -160,7 +162,9 @@ if __name__ == '__main__':
 
             rewarded.logical_or_(reward == 1)
 
-            # print(env.reward_state)
+            if step_count+1 % 10 == 0:
+                print(env.reward_state)
+
             if episode % 2 == 1 and rewarded.any():
                 print("+++++++++++++++++++++++++++++++++ REWARD IN NON IMITATION LEARNING!")
             #     print(reward)
@@ -211,7 +215,12 @@ if __name__ == '__main__':
             network_state = next_network_state
 
             wandb.log({"total_reward": total_reward.mean()})
+            step_count += 1
 
-        print(f"Episode: {episode+1}, Average Total Reward: {total_reward.mean()}\n")
+        print(f"\nEpisode: {episode+1}, Average Total Reward: {total_reward.mean()}")
 
     env.close()
+
+
+if __name__ == '__main__':
+    main()

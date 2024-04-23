@@ -16,7 +16,7 @@ class ChangeDetectionBasic(gym.Env):
 
     # all time in seconds
     # TODOPRE: adjust durations
-    def __init__(self, batch_size=1, flash_duration=25, blank_duration=25, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.25, max_flash_alternations=6, device="cpu"):
+    def __init__(self, batch_size=1, flash_duration=25, blank_duration=25, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.3, max_flash_alternations=6, device="cpu"):
         self.batch_size = batch_size
         self.flash_duration = flash_duration
         self.blank_duration = blank_duration
@@ -44,13 +44,13 @@ class ChangeDetectionBasic(gym.Env):
             print("------changing stimulus")
             self.blank_showing = False
             # Change to the next stimulus with a certain probability
-            valid_change_stimulus = torch.rand(self.batch_size, dtype=torch.float).to(
-                device=self.device) < self.change_probability
+            valid_change_stimulus = torch.rand(self.batch_size, dtype=torch.float,
+                                               device=self.device) < self.change_probability
             valid_change_stimulus.logical_and_((self.current_stimulus == self.next_stimulus).logical_not_())
             valid_change_stimulus.logical_and_((self.reward_state == STATE_TIMEOUT).logical_not_())
             self.current_stimulus = torch.where(valid_change_stimulus, self.next_stimulus, self.current_stimulus)
             self.reward_state = torch.where(valid_change_stimulus, torch.tensor(
-                STATE_IGNORE, dtype=torch.float), self.reward_state).to(device=self.device)  # Enter ignore state if stimulus changed
+                STATE_IGNORE, dtype=torch.float, device=self.device), self.reward_state)  # Enter ignore state if stimulus changed
         elif not self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), self.flash_duration):
             print("------showing blank")
             self.blank_showing = True
@@ -58,14 +58,14 @@ class ChangeDetectionBasic(gym.Env):
 
         # Transition from ignore state to reward state
         ignore_time = self.flash_duration * self.ignore_ratio
-        self.reward_state = torch.where((self.reward_state == STATE_IGNORE).to(device=self.device) & ((self.time % (
-            self.flash_duration + self.blank_duration)) >= ignore_time), torch.tensor(STATE_REWARD, dtype=torch.float).to(device=self.device), self.reward_state)
+        self.reward_state = torch.where((self.reward_state == STATE_IGNORE) & ((self.time % (
+            self.flash_duration + self.blank_duration)) >= ignore_time), torch.tensor(STATE_REWARD, dtype=torch.float, device=self.device), self.reward_state)
 
         # Determine the current observation
         blank_showing_tensor = torch.tensor([self.blank_showing] * self.batch_size,
-                                            dtype=torch.bool).to(device=self.device)
-        observation = torch.where(blank_showing_tensor, torch.tensor(-1.0,
-                                  dtype=torch.float).to(device=self.device), self.current_stimulus)
+                                            dtype=torch.bool, device=self.device)
+        observation = torch.where(blank_showing_tensor, torch.tensor(-1.0, dtype=torch.float,
+                                                                     device=self.device), self.current_stimulus)
 
         # Update reward state based on the agent's action
         lick_action = action == 1
@@ -73,13 +73,13 @@ class ChangeDetectionBasic(gym.Env):
         incorrect_lick = lick_action & (torch.eq(self.reward_state, STATE_REWARD) |
                                         torch.eq(self.reward_state, STATE_IGNORE)).logical_not_()
         self.reward_state = torch.where(incorrect_lick, torch.tensor(
-            STATE_TIMEOUT, dtype=torch.float).to(device=self.device), self.reward_state)  # Enter timeout state if incorrect lick
+            STATE_TIMEOUT, dtype=torch.float, device=self.device), self.reward_state)  # Enter timeout state if incorrect lick
         self.reward_state = torch.where(correct_lick, torch.tensor(
-            STATE_SUCCESS, dtype=torch.float).to(device=self.device), self.reward_state)  # Enter success state if correct lick
+            STATE_SUCCESS, dtype=torch.float, device=self.device), self.reward_state)  # Enter success state if correct lick
 
         # Calculate reward
-        reward = torch.where(correct_lick, torch.tensor(1.0, dtype=torch.float).to(
-            device=self.device), torch.tensor(0.0, dtype=torch.float).to(device=self.device))
+        reward = torch.where(correct_lick, torch.tensor(1.0, dtype=torch.float, device=self.device),
+                             torch.tensor(0.0, dtype=torch.float, device=self.device))
 
         # Check if the episode is done
         done = (self.flash_alternations >= self.max_flash_alternations)
