@@ -15,12 +15,13 @@ STATE_SUCCESS = 4
 class ChangeDetectionBasic(gym.Env):
 
     # all time in seconds
-    def __init__(self, batch_size=1, flash_duration=0.25, blank_duration=0.5, ignore_ratio=0.2, number_of_stimuli=8, change_probability=0.3):
+    # TODOPRE: adjust durations
+    def __init__(self, batch_size=1, flash_duration=10, blank_duration=10, ignore_ratio=0.2, number_of_possible_stimuli=8, change_probability=0.3):
         self.batch_size = batch_size
         self.flash_duration = flash_duration
         self.blank_duration = blank_duration
         self.ignore_ratio = ignore_ratio
-        self.number_of_stimuli = number_of_stimuli
+        self.number_of_stimuli = number_of_possible_stimuli
         self.change_probability = change_probability
 
         self.observation_space = list(range(self.number_of_stimuli))
@@ -38,14 +39,25 @@ class ChangeDetectionBasic(gym.Env):
         self.time += 1
 
         # Check if it's time to switch between stimulus and blank
-        if self.blank_showing and self.time % (self.flash_duration + self.blank_duration) == self.blank_duration:
+        # print(f"blank showing: {self.blank_showing}")
+        # print(f"time: {self.time}")
+        # print(f"flash_duration: {self.flash_duration}")
+        # print(f"blank_duration: {self.blank_duration}")
+        # print(f"flash_duration + blank_duration: {self.flash_duration + self.blank_duration}")
+        # print(f"time % (flash_duration + blank_duration): {self.time % (self.flash_duration + self.blank_duration)}")
+        # print(
+        #     f"condition: {not self.blank_showing and self.time % (self.flash_duration + self.blank_duration) == self.flash_duration}")
+        # print()
+        if self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), 0):
+            print("------changing stimulus")
             self.blank_showing = False
             # Change to the next stimulus with a certain probability
             change_stimulus = torch.rand(self.batch_size) < self.change_probability
             self.current_stimulus = torch.where(change_stimulus, self.next_stimulus, self.current_stimulus)
             self.reward_state = torch.where(change_stimulus, torch.tensor(
                 STATE_IGNORE), self.reward_state)  # Enter ignore state if stimulus changed
-        elif not self.blank_showing and self.time % (self.flash_duration + self.blank_duration) == self.flash_duration:
+        elif not self.blank_showing and np.isclose(self.time % (self.flash_duration + self.blank_duration), self.flash_duration):
+            print("------showing blank")
             self.blank_showing = True
 
         # Transition from ignore state to reward state
@@ -54,7 +66,8 @@ class ChangeDetectionBasic(gym.Env):
             self.flash_duration + self.blank_duration) == ignore_time), torch.tensor(STATE_REWARD), self.reward_state)
 
         # Determine the current observation
-        observation = torch.where(self.blank_showing, torch.tensor(-1), self.current_stimulus)
+        blank_showing_tensor = torch.tensor([self.blank_showing] * self.batch_size, dtype=torch.bool)
+        observation = torch.where(blank_showing_tensor, torch.tensor(-1), self.current_stimulus)
 
         # Update reward state based on the agent's action
         lick_action = action == 1
@@ -84,16 +97,16 @@ class ChangeDetectionBasic(gym.Env):
         return observation, reward, done, info
 
     def reset(self):
-        self.time = torch.zeros_like(self.batch_size)
+        self.time = 0
 
-        initial_stimulus_random_indices = torch.randoint(0, len(self.observation_space), (self.batch_size,))
+        initial_stimulus_random_indices = torch.randint(0, len(self.observation_space), (self.batch_size,))
         self.initial_stimulus = torch.Tensor([self.observation_space[i] for i in initial_stimulus_random_indices])
         self.current_stimulus = self.initial_stimulus
 
         next_stimulus_offsets = torch.randint(1, len(self.observation_space), (self.batch_size,))
         self.next_stimulus = (self.current_stimulus + next_stimulus_offsets) % len(self.observation_space)
 
-        self.reward_state = torch.zeros_like(self.batch_size)
+        self.reward_state = torch.zeros(self.batch_size)
 
         self.blank_showing = False
 
