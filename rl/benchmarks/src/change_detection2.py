@@ -1,5 +1,6 @@
 import random
 import warnings
+import cProfile
 
 import gymnasium as gym
 from torch import nn
@@ -78,7 +79,7 @@ def generate_state_tensor(observation, reward, env):
     return state_one_hot
 
 
-@profile(stdout=False, filename='baseline.prof', skip=True)
+# @profile(stdout=False, filename='baseline.prof', skip=True)
 def main():
     # Create the ChangeDetectionBasic environment
     env = ChangeDetectionBasic(batch_size=BATCH_SIZE, device=DEVICE, max_flash_alternations=6)
@@ -223,4 +224,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    cProfile.run("main()", "baseline.prof")
