@@ -115,12 +115,12 @@ if __name__ == "__main__":
         }
     )
 
-    num_epochs = 100
+    num_epochs = 200
     num_sequences = 2
     base_sequence_length = 400  # Consistent sequence length for training and inference
-    full_sequence_length = base_sequence_length * 5  # Longer sequence to enable sliding window
+    full_sequence_length = base_sequence_length * 6  # Longer sequence to enable sliding window
     num_modes = 2
-    freq_range = (5, 10)
+    freq_range = (20, 30)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
     batch_size = 256
