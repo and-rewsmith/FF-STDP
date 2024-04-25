@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+import wandb
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -79,6 +80,7 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs):
             optimizer.step()
             total_loss += loss.item()
         print(f'Epoch {epoch+1}: Loss {total_loss / len(dataloader)}')
+        wandb.log({"loss": total_loss / len(dataloader)})
 
 
 def prepare_data(waveforms, base_sequence_length):
@@ -105,11 +107,19 @@ def prepare_data(waveforms, base_sequence_length):
 
 
 if __name__ == "__main__":
-    num_epochs = 30
-    num_sequences = 10
+    wandb.init(
+        project="transformer-poc",
+        config={
+            "architecture": "initial",
+            "dataset": "waves",
+        }
+    )
+
+    num_epochs = 100
+    num_sequences = 2
     base_sequence_length = 400  # Consistent sequence length for training and inference
-    full_sequence_length = base_sequence_length * 2  # Longer sequence to enable sliding window
-    num_modes = 3
+    full_sequence_length = base_sequence_length * 5  # Longer sequence to enable sliding window
+    num_modes = 2
     freq_range = (5, 10)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
