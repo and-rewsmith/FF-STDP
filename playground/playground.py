@@ -69,6 +69,8 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs):
         total_loss = 0
         for batch_idx, (input_batch, target_batch) in enumerate(dataloader):
             print(f"batch: {batch_idx}")
+            print(f"input_batch: {input_batch.shape}")
+            # input()
             optimizer.zero_grad()
             output_batch = model(input_batch)
             target_batch = target_batch.squeeze(2)  # Remove the extra dimension
@@ -103,31 +105,35 @@ def prepare_data(waveforms, base_sequence_length):
 
 
 if __name__ == "__main__":
-    num_epochs = 20
-    num_sequences = 20
-    base_sequence_length = 150  # Consistent sequence length for training and inference
-    full_sequence_length = base_sequence_length * 6  # Longer sequence to enable sliding window
-    num_modes = 5
-    freq_range = (1, 5)
+    num_epochs = 30
+    num_sequences = 10
+    base_sequence_length = 400  # Consistent sequence length for training and inference
+    full_sequence_length = base_sequence_length * 2  # Longer sequence to enable sliding window
+    num_modes = 3
+    freq_range = (5, 10)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
+    batch_size = 256
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
     inputs, targets = prepare_data(waveforms, base_sequence_length)
 
     plt.figure(figsize=(12, 6))
-    plt.plot(np.arange(full_sequence_length), waveforms[0], label='Input Waveform')
+
+    for i, waveform in enumerate(waveforms):
+        plt.plot(np.arange(full_sequence_length), waveform, label=f'Waveform {i+1}')
+
     plt.legend()
-    plt.title('Input Waveform')
+    plt.title('Input Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
-    plt.savefig('input_waveform.png')
+    plt.savefig('input_waveforms.png')
 
     print(inputs.shape)
     print(targets.shape)
 
     dataset = torch.utils.data.TensorDataset(inputs, targets)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1024, shuffle=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = TransformerDecoderModel(
         input_dim=1,
@@ -154,8 +160,6 @@ if __name__ == "__main__":
                 predictions.append(output)
                 output = output.unsqueeze(1)
                 # Append the predicted token to the input sequence
-                print("input sequence shape: ", input_sequence.shape)
-                print("output shape: ", output.shape)
                 input_sequence = torch.cat((input_sequence, output), dim=1)
                 # Sliding window: remove the oldest token if sequence length exceeds base_sequence_length
                 if input_sequence.size(1) > base_sequence_length:
