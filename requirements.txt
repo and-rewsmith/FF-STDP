@@ -79,9 +79,6 @@ snntorch==0.7.0
 stack-data==0.6.3
 sympy==1.11.1
 tenacity==8.2.3
-torch==2.3.0.dev20231214
-torchaudio==2.2.0.dev20231214
-torchvision==0.18.0.dev20231214
 tornado==6.4
 tqdm==4.66.2
 traitlets==5.14.1
