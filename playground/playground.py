@@ -7,15 +7,29 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
 
 
-def generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range):
-    waveforms = np.zeros((num_sequences, full_sequence_length))
-    t = np.linspace(0, 3, full_sequence_length, endpoint=False)
+def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range):
+    """
+    Generates a dataset of waveforms, each composed of a sum of sinusoidal modes.
+
+    Parameters:
+    - num_sequences (int): Number of waveform sequences to generate.
+    - sequence_length (int): Number of samples in each waveform sequence.
+    - num_modes (int): Number of sinusoidal modes per sequence.
+    - freq_range (tuple): Range of frequencies (min_freq, max_freq).
+    - amp_range (tuple): Range of amplitudes (min_amp, max_amp).
+    - phase_range (tuple): Range of phases (min_phase, max_phase).
+
+    Returns:
+    - np.array: Array of shape (num_sequences, sequence_length) containing the generated waveforms.
+    """
+    waveforms = np.zeros((num_sequences, sequence_length))
+    t = np.linspace(0, 2 * np.pi, sequence_length, endpoint=False)
     for i in range(num_sequences):
         for _ in range(num_modes):
             frequency = np.random.uniform(*freq_range)
             amplitude = np.random.uniform(*amp_range)
             phase = np.random.uniform(*phase_range)
-            waveforms[i] += amplitude * np.sin(2 * np.pi * frequency * t + phase)
+            waveforms[i] += amplitude * np.sin(frequency * t + phase)
     return waveforms
 
 
@@ -91,7 +105,7 @@ def prepare_data(waveforms, base_sequence_length):
 if __name__ == "__main__":
     num_epochs = 20
     num_sequences = 20
-    base_sequence_length = 300  # Consistent sequence length for training and inference
+    base_sequence_length = 150  # Consistent sequence length for training and inference
     full_sequence_length = base_sequence_length * 6  # Longer sequence to enable sliding window
     num_modes = 5
     freq_range = (1, 5)
@@ -100,6 +114,14 @@ if __name__ == "__main__":
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
     inputs, targets = prepare_data(waveforms, base_sequence_length)
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(np.arange(full_sequence_length), waveforms[0], label='Input Waveform')
+    plt.legend()
+    plt.title('Input Waveform')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Amplitude')
+    plt.savefig('input_waveform.png')
 
     print(inputs.shape)
     print(targets.shape)
@@ -130,7 +152,10 @@ if __name__ == "__main__":
             while len(predictions) < (total_length - initial_input.size(1)):
                 output = model(input_sequence)
                 predictions.append(output)
+                output = output.unsqueeze(1)
                 # Append the predicted token to the input sequence
+                print("input sequence shape: ", input_sequence.shape)
+                print("output shape: ", output.shape)
                 input_sequence = torch.cat((input_sequence, output), dim=1)
                 # Sliding window: remove the oldest token if sequence length exceeds base_sequence_length
                 if input_sequence.size(1) > base_sequence_length:
@@ -142,13 +167,31 @@ if __name__ == "__main__":
     predicted_output = autoregressive_inference(model, test_input, full_sequence_length, base_sequence_length)
     predicted_output = predicted_output.squeeze().cpu().numpy()
 
+    # Combine the input sequence and predicted output
+    combined_output = np.concatenate((test_input.squeeze().cpu().numpy(), predicted_output))
+
     plt.figure(figsize=(12, 6))
     plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
-    plt.plot(np.arange(base_sequence_length, full_sequence_length),
-             predicted_output, label='Predicted Waveform', linestyle='--')
+    plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
     plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
     plt.legend()
     plt.title('Comparison of Original and Predicted Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
     plt.savefig('waveform_comparison.png')
+
+    # # Visualizing the predictions
+    # test_input = inputs[:1, :base_sequence_length, :]  # Take the first sample for testing
+    # predicted_output = autoregressive_inference(model, test_input, full_sequence_length, base_sequence_length)
+    # predicted_output = predicted_output.squeeze().cpu().numpy()
+
+    # plt.figure(figsize=(12, 6))
+    # plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
+    # plt.plot(np.arange(base_sequence_length, full_sequence_length),
+    #          predicted_output, label='Predicted Waveform', linestyle='--')
+    # plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
+    # plt.legend()
+    # plt.title('Comparison of Original and Predicted Waveforms')
+    # plt.xlabel('Time Steps')
+    # plt.ylabel('Amplitude')
+    # plt.savefig('waveform_comparison.png')
