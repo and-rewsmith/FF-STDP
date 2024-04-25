@@ -2,15 +2,19 @@ import random
 import warnings
 import cProfile
 
+
 import gymnasium as gym
+from line_profiler import LineProfiler
 from torch import nn
 from torch import optim
 import torch
 import torch.nn.functional as F
 import wandb
-from profilehooks import profile
+from line_profiler import profile
+from model.src.lif import LIF, SpikeOperator
 
 from model.src.network import Net
+from model.src.network import Layer
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 from rl.benchmarks.src.change_detection_framework2 import ChangeDetectionBasic
@@ -80,6 +84,7 @@ def generate_state_tensor(observation, reward, env):
 
 
 # @profile(stdout=False, filename='baseline.prof', skip=True)
+@profile
 def main():
     # Create the ChangeDetectionBasic environment
     env = ChangeDetectionBasic(batch_size=BATCH_SIZE, device=DEVICE, max_flash_alternations=6)
@@ -129,7 +134,7 @@ def main():
     actor_optim = optim.Adam(actor.parameters(), lr=ACTOR_LR)
     critic_optim = optim.Adam(critic.parameters(), lr=CRITIC_LR)
 
-    num_episodes = 1000
+    num_episodes = 1
 
     total_reward = torch.zeros(BATCH_SIZE).to(device=DEVICE)
     for episode in range(num_episodes):
@@ -223,6 +228,21 @@ def main():
     env.close()
 
 
-if __name__ == '__main__':
-    # main()
-    cProfile.run("main()", "baseline.prof")
+def run_profiling():
+    profiler = LineProfiler()
+    profiler.add_function(main)
+    profiler.add_function(Layer.train_excitatory_from_layer)
+    profiler.add_function(Layer.train_inhibitory_from_layer)
+    profiler.add_function(Layer.forward)
+    profiler.add_function(LIF.forward)
+    profiler.add_function(SpikeOperator.forward)
+    profiler.enable_by_count()
+    try:
+        main()
+    finally:
+        profiler.disable_by_count()
+        profiler.print_stats()
+
+
+if __name__ == "__main__":
+    run_profiling()
