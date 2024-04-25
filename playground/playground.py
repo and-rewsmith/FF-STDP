@@ -3,16 +3,13 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Check for MPS availability and use it
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# Waveform Generation
 
-
-def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range):
-    waveforms = np.zeros((num_sequences, sequence_length))
-    t = np.linspace(0, 3, sequence_length, endpoint=False)  # Assume 3 full cycles in the extended sequence
+def generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range):
+    waveforms = np.zeros((num_sequences, full_sequence_length))
+    t = np.linspace(0, 3, full_sequence_length, endpoint=False)
     for i in range(num_sequences):
         for _ in range(num_modes):
             frequency = np.random.uniform(*freq_range)
@@ -21,26 +18,21 @@ def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, am
             waveforms[i] += amplitude * np.sin(2 * np.pi * frequency * t + phase)
     return waveforms
 
-# Positional Encoding Module
-
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, sequence_length, pos_dim):
+    def __init__(self, max_length, pos_dim):
         super().__init__()
-        self.pos_embedding = nn.Parameter(torch.randn(sequence_length, pos_dim))
+        self.pos_embedding = nn.Parameter(torch.randn(max_length, pos_dim))
 
     def forward(self, x):
-        pos_embedding = self.pos_embedding.unsqueeze(0).expand(x.size(0), -1, -1)
-        return torch.cat((x, pos_embedding), dim=2)
-
-# Transformer Decoder Model with Positional Encoding
+        return torch.cat((x, self.pos_embedding[:x.size(1), :].unsqueeze(0).expand(x.size(0), -1, -1)), dim=2)
 
 
 class TransformerDecoderModel(nn.Module):
-    def __init__(self, input_dim, pos_dim, sequence_length, nhead, num_decoder_layers, dim_feedforward):
+    def __init__(self, input_dim, pos_dim, base_sequence_length, nhead, num_decoder_layers, dim_feedforward):
         super().__init__()
         self.embedding = nn.Linear(input_dim, dim_feedforward).to(device)
-        self.pos_encoder = PositionalEncoding(sequence_length, pos_dim).to(device)
+        self.pos_encoder = PositionalEncoding(base_sequence_length, pos_dim).to(device)
         self.transformer_decoder = nn.TransformerDecoder(
             nn.TransformerDecoderLayer(d_model=dim_feedforward + pos_dim, nhead=nhead,
                                        dim_feedforward=dim_feedforward).to(device),
@@ -51,12 +43,10 @@ class TransformerDecoderModel(nn.Module):
     def forward(self, src):
         src = self.embedding(src)
         src = self.pos_encoder(src)
-        src = src.permute(1, 0, 2)  # seq_len, batch, feature
-        output = self.transformer_decoder(src, src)  # No mask needed for full sequence in training
-        output = output.permute(1, 0, 2)  # Convert back to batch, seq_len, feature
+        src = src.permute(1, 0, 2)
+        output = self.transformer_decoder(src, src)
+        output = output.permute(1, 0, 2)
         return self.fc_out(output)
-
-# Training Function using Teacher Forcing
 
 
 def train(model, dataloader, loss_fn, optimizer, num_epochs):
@@ -72,42 +62,41 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs):
             total_loss += loss.item()
         print(f'Epoch {epoch+1}: Loss {total_loss / len(dataloader)}')
 
-# Autoregressive Inference and Visualization
 
-
-def autoregressive_inference(model, initial_input, total_length):
-    model.eval()
-    with torch.no_grad():
-        input_sequence = initial_input
-        predictions = []
-        for _ in range(total_length - len(initial_input)):
-            print("inference step")
-            output = model(input_sequence)
-            next_value = output[:, -1:, :]
-            predictions.append(next_value)
-            input_sequence = torch.cat((input_sequence, next_value), dim=1)
-        return torch.cat(predictions, dim=1)
+def prepare_data(waveforms, base_sequence_length):
+    inputs = []
+    targets = []
+    for waveform in waveforms:
+        for start in range(waveform.shape[0] - base_sequence_length):
+            end = start + base_sequence_length
+            inputs.append(waveform[start:end])
+            targets.append(waveform[start+1:end+1])  # Shifted by one for targets
+    return torch.tensor(inputs, dtype=torch.float32).unsqueeze(-1).to(device), torch.tensor(targets, dtype=torch.float32).unsqueeze(-1).to(device)
 
 
 if __name__ == "__main__":
-    num_sequences = 50
-    sequence_length = 300  # Total length including input and predicted part
-    num_modes = 5
+    num_epochs = 1
+    num_sequences = 1
+    base_sequence_length = 300  # Consistent sequence length for training and inference
+    full_sequence_length = base_sequence_length * 3  # Longer sequence to enable sliding window
+    num_modes = 1
     freq_range = (1, 5)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
 
-    waveforms = generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range)
-    # Add feature dimension and move to device
-    inputs = torch.tensor(waveforms, dtype=torch.float32).unsqueeze(-1).to(device)
+    waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
+    inputs, targets = prepare_data(waveforms, base_sequence_length)
 
-    dataset = torch.utils.data.TensorDataset(inputs[:, :-1, :], inputs[:, 1:, :])  # Shifted by one for teacher forcing
+    print(inputs.shape)
+    print(targets.shape)
+
+    dataset = torch.utils.data.TensorDataset(inputs, targets)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
 
     model = TransformerDecoderModel(
         input_dim=1,
         pos_dim=10,
-        sequence_length=sequence_length-1,  # Minus one because we're shifting for teacher forcing,
+        base_sequence_length=base_sequence_length,
         nhead=4,
         num_decoder_layers=3,
         dim_feedforward=50
@@ -116,24 +105,34 @@ if __name__ == "__main__":
     loss_fn = nn.MSELoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-    # Train the model
-    num_epochs = 20
     train(model, dataloader, loss_fn, optimizer, num_epochs)
 
-    # Autoregressive Inference for Visualization
-    test_input = inputs[0:1, :int(sequence_length * 0.2), :]  # Use the first 20% as starting input
-    predicted_output = autoregressive_inference(model, test_input, sequence_length)
-    predicted_output = predicted_output.squeeze().cpu().numpy()  # Move prediction to CPU for plotting
+    # Autoregressive inference function to generate predictions after training
+    def autoregressive_inference(model, initial_input, total_length):
+        model.eval()
+        with torch.no_grad():
+            input_sequence = initial_input.clone()
+            predictions = []
+            while len(predictions) < (total_length - initial_input.size(1)):
+                output = model(input_sequence)
+                next_value = output[:, -1:, :]  # Taking the last output as the next input
+                predictions.append(next_value)
+                input_sequence = torch.cat((input_sequence, next_value), dim=1)  # Append to the input sequence
+            return torch.cat(predictions, dim=1)
 
-    # Visualization of the results
+    # Visualizing the predictions
+    test_input = inputs[:1, :, :]  # Take the first sample for testing
+    predicted_output = autoregressive_inference(model, test_input, full_sequence_length)
+    predicted_output = predicted_output.squeeze().cpu().numpy()
+
     plt.figure(figsize=(12, 6))
-    plt.plot(np.arange(sequence_length), waveforms[0], label='Original Full Waveform')
-    plt.plot(np.arange(int(sequence_length * 0.2), sequence_length),
-             predicted_output, label='Predicted Waveform', linestyle='--')
-    plt.axvline(x=int(sequence_length * 0.2), color='r', linestyle=':', label='Start of Prediction')
+    plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
+    plt.plot(np.arange(base_sequence_length, full_sequence_length),
+             predicted_output[base_sequence_length:], label='Predicted Waveform', linestyle='--')
+    plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
     plt.legend()
     plt.title('Comparison of Original and Predicted Waveforms')
     plt.xlabel('Time Steps')
-    plt.ylabel('Waveform Amplitude')
+    plt.ylabel('Amplitude')
     plt.savefig('waveform_comparison.png')
     plt.show()
