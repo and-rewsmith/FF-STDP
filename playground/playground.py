@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range):
@@ -92,12 +93,63 @@ class TransformerDecoderModel(nn.Module):
         return output
 
 
+def train(model, dataloader, loss_fn, optimizer, num_epochs):
+    model.train()
+    losses = []
+    for epoch in range(num_epochs):
+        total_loss = 0
+        for batch in dataloader:
+            print("batch")
+            # print(len(batch))
+            # print(batch[0].shape)
+            # input()
+            input_batch = batch[0].unsqueeze(-1)
+            target_batch = batch[0].unsqueeze(-1)
+
+            optimizer.zero_grad()
+            output_batch = model(input_batch)
+            loss = loss_fn(output_batch, target_batch)
+            total_loss += loss.item()
+            loss.backward()
+            optimizer.step()
+
+        avg_loss = total_loss / len(dataloader)
+        losses.append(avg_loss)
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss}')
+    return losses
+
+# Evaluation and plotting function
+
+
+def evaluate_and_plot(model, dataloader, num_sequences_to_plot=3):
+    model.eval()
+    with torch.no_grad():
+        for i, batch in enumerate(dataloader):
+            if i >= num_sequences_to_plot:
+                break
+            input_batch = batch[0].unsqueeze(-1)
+            output_batch = model(input_batch)
+            input_waveform = input_batch.squeeze().numpy()
+            output_waveform = output_batch.squeeze().numpy()
+
+            plt.figure(figsize=(10, 4))
+            plt.plot(input_waveform[i], label='Original')
+            plt.plot(output_waveform[i], label='Predicted', linestyle='--')
+            plt.legend()
+            plt.title(f'Waveform Sequence {i+1}')
+            plt.xlabel('Time')
+            plt.ylabel('Amplitude')
+            plt.savefig(f'waveform_sequence_{i+1}.png')
+
+
+# Main script
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
+    # set torch random seed
+    torch.manual_seed(0)
 
     # Example parameters
-    num_sequences = 10
-    sequence_length = 1000
+    num_sequences = 1024  # Changed to a larger number for more training data
+    sequence_length = 1024
     num_modes = 5
     freq_range = (1, 5)
     amp_range = (0.5, 1.0)
@@ -105,55 +157,47 @@ if __name__ == "__main__":
 
     # Generate waveforms
     waveforms = generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range)
-
-    # # Plot the first few waveforms
-    # plt.figure(figsize=(10, 8))
-    # for i in range(min(num_sequences, 5)):  # Plot only the first 5 sequences
-    #     plt.plot(waveforms[i], label=f'Sequence {i+1}')
-    # plt.title('Generated Waveforms')
-    # plt.xlabel('Time')
-    # plt.ylabel('Amplitude')
-    # plt.legend()
-    # plt.savefig('waveforms.png')
-
-    # Assuming the use of generated waveforms from previous steps
     waveforms_tensor = torch.tensor(waveforms, dtype=torch.float32)
 
-    # Create dataset and dataloader
-    dataset = torch.utils.data.TensorDataset(waveforms_tensor)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=True)
+    print("generated waveforms: ", waveforms_tensor.shape)
+
+    # Split data into train and test sets (80-20 split)
+    split_index = int(num_sequences * 0.8)
+    train_waveforms = waveforms_tensor[:split_index]
+    test_waveforms = waveforms_tensor[split_index:]
+
+    # Create datasets and dataloaders
+    train_dataset = torch.utils.data.TensorDataset(train_waveforms)
+    test_dataset = torch.utils.data.TensorDataset(test_waveforms)
+
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     # Model instantiation
     model = TransformerDecoderModel(
-        input_dim=1,  # Since the raw waveform data is 1D
-        pos_dim=16,  # Dimension of the positional encoding
-        sequence_length=sequence_length,  # Length of the waveform sequences
-        nhead=8,  # Number of heads in the multi-head attention models
-        num_decoder_layers=6,  # Number of sub-encoder-layers in the transformer
-        dim_feedforward=512  # Dimension of the feedforward network model
+        input_dim=1,
+        pos_dim=16,
+        sequence_length=sequence_length,
+        nhead=8,
+        num_decoder_layers=6,
+        dim_feedforward=512
     )
 
     # Loss and optimizer
     loss_fn = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 
-    # Training loop
-    def train(model, dataloader, loss_fn, optimizer, num_epochs):
-        for epoch in range(num_epochs):
-            model.train()
-            for batch in dataloader:
-                input_batch = batch[0]
-                # Add an extra dimension to input_batch to represent single features.
-                input_batch = input_batch.unsqueeze(-1)  # Now input_batch shape is (batch_size, sequence_length, 1)
-                target_batch = input_batch
+    # Train the model
+    losses = train(model, train_dataloader, loss_fn, optimizer, num_epochs=5)
 
-                optimizer.zero_grad()
-                output_batch = model(input_batch)
-                loss = loss_fn(output_batch, target_batch)
-                loss.backward()
-                optimizer.step()
+    # Plot the training loss curve
+    plt.figure(figsize=(10, 5))
+    plt.plot(losses, label='Training Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Loss Curve')
+    plt.legend()
+    plt.savefig('loss_curve.png')
 
-            print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
-
-    # Training the model
-    train(model, dataloader, loss_fn, optimizer, num_epochs=5)
+    # Evaluate the model on the test data and plot predictions
+    evaluate_and_plot(model, test_dataloader)
