@@ -111,7 +111,7 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 if __name__ == "__main__":
     wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
-    num_epochs = 200
+    num_epochs = 50
     num_sequences = 2
     base_sequence_length = 400
     full_sequence_length = base_sequence_length * 6
@@ -120,6 +120,7 @@ if __name__ == "__main__":
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
     batch_size = 256
+    plot_trained_autoregressive_inference = True  # If false make sure you have enough sequences
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
     (train_inputs, train_targets), (test_inputs, test_targets) = prepare_data(waveforms, base_sequence_length)
@@ -144,7 +145,7 @@ if __name__ == "__main__":
     model = TransformerDecoderModel(input_dim=1, pos_dim=10, base_sequence_length=base_sequence_length,
                                     nhead=4, num_decoder_layers=3, dim_feedforward=50).to(device)
     loss_fn = nn.MSELoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0002)
 
     train(model, train_loader, loss_fn, optimizer, num_epochs)
 
@@ -181,8 +182,10 @@ if __name__ == "__main__":
                     input_sequence = input_sequence[:, -base_sequence_length:, :]
             return torch.cat(predictions, dim=1)
 
+    waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
+
     # Construct the input to plot up until the prediction point
-    sampling_input = waveforms[0][0:base_sequence_length]
+    sampling_input = waveforms[waveform_to_plot][0:base_sequence_length]
     sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
 
     # Autoregressive inference to generate the rest of the waveform
@@ -192,10 +195,10 @@ if __name__ == "__main__":
     # Massage into combined output for plotting
     sampling_input = sampling_input.cpu().numpy()
     predicted_output = predicted_output.squeeze().cpu().numpy()
-    combined_output = np.concatenate((waveforms[0][0:base_sequence_length], predicted_output))
+    combined_output = np.concatenate((waveforms[waveform_to_plot][0:base_sequence_length], predicted_output))
 
     plt.figure(figsize=(12, 6))
-    plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
+    plt.plot(np.arange(full_sequence_length), waveforms[waveform_to_plot], label='Original Full Waveform')
     plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
     plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
     plt.legend()
