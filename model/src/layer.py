@@ -5,9 +5,8 @@ import numpy as np
 import torch
 from torch import nn
 import wandb
-import line_profiler
 
-from model.src.constants import DECAY_BETA, DELTA, \
+from model.src.constants import DELTA, \
     KAPPA, LAMBDA_HEBBIAN, THETA_REST, XI, ZENKE_BETA
 from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
@@ -232,7 +231,6 @@ class Layer(nn.Module):
 
         self.recurrent_weights.set_sparsity_mask(self, self)
 
-    @line_profiler.profile
     def forward(self, data: Optional[torch.Tensor] = None) -> torch.Tensor:
         with torch.no_grad():
             excitatory_recurrent_mask = self.excitatory_mask_vec
@@ -312,117 +310,110 @@ class Layer(nn.Module):
         spk = self.lif.forward(total_current)
         self.forward_counter += 1
 
-        # logging.debug("")
-        # logging.debug(f"current: {str(total_current)}")
-        # logging.debug(f"mem: {str(self.lif.mem())}")
-        # logging.debug(f"spk: {str(spk)}")
-
         return spk
 
     # TODO: this will need to be removed or refactored once we move to more
     # complex network topologies
     def __log_equation_context(self, excitatory_equation: ExcitatorySynapticWeightEquation, dw_dt: torch.Tensor,
                                spike: torch.Tensor, mem: torch.Tensor) -> None:
-        pass
-        # logging.debug("")
-        # logging.debug("first term stats:")
-        # logging.debug(
-        #     f"prev layer most recent spike: {excitatory_equation.first_term.prev_layer_most_recent_spike}")
-        # logging.debug(
-        #     f"zenke beta * abs: {ZENKE_BETA * abs(mem - THETA_REST)}")
-        # logging.debug(
-        #     f"f prime u i: {excitatory_equation.first_term.f_prime_u_i}")
-        # logging.debug(
-        #     f"first term no filter: {excitatory_equation.first_term.no_filter}")
-        # logging.debug(
-        #     f"first term epsilon: {excitatory_equation.first_term.epsilon_filter}")
-        # logging.debug(
-        #     f"first term alpha filter: {excitatory_equation.first_term.alpha_filter}")
-        # logging.debug("")
-        # logging.debug("second term stats:")
-        # logging.debug(
-        #     f"second_term_prediction_error: {excitatory_equation.second_term.prediction_error}")
-        # logging.debug(
-        #     f"second_term_deviation_scale: {excitatory_equation.second_term.deviation_scale}")
-        # logging.debug(
-        #     f"second_term_deviation: {excitatory_equation.second_term.deviation}")
-        # logging.debug(
-        #     f"second term no filter: {excitatory_equation.second_term.no_filter}")
-        # logging.debug(
-        #     f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
-        # logging.debug("")
-        # logging.debug(
-        #     f"first term alpha: {excitatory_equation.first_term.alpha_filter}")
-        # logging.debug(
-        #     f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
-        # logging.debug("")
-        # logging.debug(f"dw_dt shape: {dw_dt.shape}")
-        # logging.debug(f"dw_dt: {dw_dt}")
-        # logging.debug(
-        #     f"forward weights shape: {self.forward_weights.weight().shape}")
-        # logging.debug(f"forward weights: {self.forward_weights.weight()}")
+        logging.debug("")
+        logging.debug("first term stats:")
+        logging.debug(
+            f"prev layer most recent spike: {excitatory_equation.first_term.prev_layer_most_recent_spike}")
+        logging.debug(
+            f"zenke beta * abs: {ZENKE_BETA * abs(mem - THETA_REST)}")
+        logging.debug(
+            f"f prime u i: {excitatory_equation.first_term.f_prime_u_i}")
+        logging.debug(
+            f"first term no filter: {excitatory_equation.first_term.no_filter}")
+        logging.debug(
+            f"first term epsilon: {excitatory_equation.first_term.epsilon_filter}")
+        logging.debug(
+            f"first term alpha filter: {excitatory_equation.first_term.alpha_filter}")
+        logging.debug("")
+        logging.debug("second term stats:")
+        logging.debug(
+            f"second_term_prediction_error: {excitatory_equation.second_term.prediction_error}")
+        logging.debug(
+            f"second_term_deviation_scale: {excitatory_equation.second_term.deviation_scale}")
+        logging.debug(
+            f"second_term_deviation: {excitatory_equation.second_term.deviation}")
+        logging.debug(
+            f"second term no filter: {excitatory_equation.second_term.no_filter}")
+        logging.debug(
+            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
+        logging.debug("")
+        logging.debug(
+            f"first term alpha: {excitatory_equation.first_term.alpha_filter}")
+        logging.debug(
+            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
+        logging.debug("")
+        logging.debug(f"dw_dt shape: {dw_dt.shape}")
+        logging.debug(f"dw_dt: {dw_dt}")
+        logging.debug(
+            f"forward weights shape: {self.forward_weights.weight().shape}")
+        logging.debug(f"forward weights: {self.forward_weights.weight()}")
 
-        # def reduce_feature_dims_with_mask(
-        #         tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        #     return tensor[mask.unsqueeze(0).expand(
-        #         self.layer_settings.batch_size, -1).bool()]
+        def reduce_feature_dims_with_mask(
+                tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return tensor[mask.unsqueeze(0).expand(
+                self.layer_settings.batch_size, -1).bool()]
 
-        # # NOTE: if we want to log just one data point index the batch dim into
-        # # these tensors
-        # excitatory_mem = reduce_feature_dims_with_mask(
-        #     mem, self.excitatory_mask_vec)
-        # inhibitory_mem = reduce_feature_dims_with_mask(
-        #     mem, self.inhibitory_mask_vec)
-        # excitatory_spike = reduce_feature_dims_with_mask(
-        #     spike, self.excitatory_mask_vec)
-        # inhibitory_spike = reduce_feature_dims_with_mask(
-        #     spike, self.inhibitory_mask_vec)
+        # NOTE: if we want to log just one data point index the batch dim into
+        # these tensors
+        excitatory_mem = reduce_feature_dims_with_mask(
+            mem, self.excitatory_mask_vec)
+        inhibitory_mem = reduce_feature_dims_with_mask(
+            mem, self.inhibitory_mask_vec)
+        excitatory_spike = reduce_feature_dims_with_mask(
+            spike, self.excitatory_mask_vec)
+        inhibitory_spike = reduce_feature_dims_with_mask(
+            spike, self.inhibitory_mask_vec)
 
-        # wandb.log(
-        #     {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
-        # try:
-        #     wandb.log(
-        #         {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
-        #     wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
-        #               step=self.forward_counter)
-        # except IndexError:
-        #     pass
-        # wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
-        #           step=self.forward_counter)
-        # wandb.log(
-        #     {
-        #         f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]},
-        #     step=self.forward_counter)
-        # wandb.log(
-        #     {
-        #         f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]},
-        #     step=self.forward_counter)
+        wandb.log(
+            {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
+        try:
+            wandb.log(
+                {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+            wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
+                      step=self.forward_counter)
+        except IndexError:
+            pass
+        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
+                  step=self.forward_counter)
+        wandb.log(
+            {
+                f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]},
+            step=self.forward_counter)
+        wandb.log(
+            {
+                f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]},
+            step=self.forward_counter)
 
         # TODO: The below metrics are specific to the dataset so will eventually
         # need to be removed. For now we comment them out.
-        # if self.layer_settings.layer_id == 0:
-        #     # Log for a layer the weight from the first datapoint to the excitatory
-        #     # neuron. The key here is that we need to know what the excitatory
-        #     # neuron is in order to figure out how to index into the forward
-        #     # weights.
-        #     excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1) \
-        #         .expand(-1, self.layer_settings.data_size) \
-        #         * self.forward_weights.weight()
-        #     # Identify rows that are not all zeros
-        #     non_zero_rows = excitatory_masked_weight.any(dim=1)
-        #     # Filter out rows that are all zeros
-        #     excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
-        #     assert excitatory_masked_weight.shape == (
-        #         self.layer_settings.size / 2, self.layer_settings.data_size)
+        if self.layer_settings.layer_id == 0:
+            # Log for a layer the weight from the first datapoint to the excitatory
+            # neuron. The key here is that we need to know what the excitatory
+            # neuron is in order to figure out how to index into the forward
+            # weights.
+            excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1) \
+                .expand(-1, self.layer_settings.data_size) \
+                * self.forward_weights.weight()
+            # Identify rows that are not all zeros
+            non_zero_rows = excitatory_masked_weight.any(dim=1)
+            # Filter out rows that are all zeros
+            excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
+            assert excitatory_masked_weight.shape == (
+                self.layer_settings.size / 2, self.layer_settings.data_size)
 
-        #     wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
-        #               step=self.forward_counter)
-        #     wandb.log(
-        #         {f"layer_{self.layer_settings.layer_id}_exc_weight_1":
-        #             excitatory_masked_weight[0][1]},
-        #         step=self.forward_counter)
+            wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
+                      step=self.forward_counter)
+            wandb.log(
+                {f"layer_{self.layer_settings.layer_id}_exc_weight_1":
+                    excitatory_masked_weight[0][1]},
+                step=self.forward_counter)
 
-    @line_profiler.profile
     def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
                                     data: torch.Tensor) -> None:
@@ -560,12 +551,12 @@ class Layer(nn.Module):
                 )
 
                 # TODO: Remove this when we decouple the logging for the
-                # pointcloud benchmark from the model code
-                self.data: torch.Tensor = data
-                self.__log_equation_context(
-                    synaptic_weight_equation, dw_dt, spike, self.lif.mem())
+                # pointcloud benchmark from the model code. Disabling for now.
+                #
+                # self.data: torch.Tensor = data
+                # self.__log_equation_context(
+                #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
-    @line_profiler.profile
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     from_layer: Self) -> None:
         # expand the mask across the synaptic weight matrix
