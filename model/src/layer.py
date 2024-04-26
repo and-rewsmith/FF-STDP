@@ -392,27 +392,27 @@ class Layer(nn.Module):
 
         # TODO: The below metrics are specific to the dataset so will eventually
         # need to be removed. For now we comment them out.
-        if self.layer_settings.layer_id == 0:
-            # Log for a layer the weight from the first datapoint to the excitatory
-            # neuron. The key here is that we need to know what the excitatory
-            # neuron is in order to figure out how to index into the forward
-            # weights.
-            excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1) \
-                .expand(-1, self.layer_settings.data_size) \
-                * self.forward_weights.weight()
-            # Identify rows that are not all zeros
-            non_zero_rows = excitatory_masked_weight.any(dim=1)
-            # Filter out rows that are all zeros
-            excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
-            assert excitatory_masked_weight.shape == (
-                self.layer_settings.size / 2, self.layer_settings.data_size)
+        # if self.layer_settings.layer_id == 0:
+        #     # Log for a layer the weight from the first datapoint to the excitatory
+        #     # neuron. The key here is that we need to know what the excitatory
+        #     # neuron is in order to figure out how to index into the forward
+        #     # weights.
+        #     excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1) \
+        #         .expand(-1, self.layer_settings.data_size) \
+        #         * self.forward_weights.weight()
+        #     # Identify rows that are not all zeros
+        #     non_zero_rows = excitatory_masked_weight.any(dim=1)
+        #     # Filter out rows that are all zeros
+        #     excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
+        #     assert excitatory_masked_weight.shape == (
+        #         self.layer_settings.size / 2, self.layer_settings.data_size)
 
-            wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
-                      step=self.forward_counter)
-            wandb.log(
-                {f"layer_{self.layer_settings.layer_id}_exc_weight_1":
-                    excitatory_masked_weight[0][1]},
-                step=self.forward_counter)
+        #     wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
+        #               step=self.forward_counter)
+        #     wandb.log(
+        #         {f"layer_{self.layer_settings.layer_id}_exc_weight_1":
+        #             excitatory_masked_weight[0][1]},
+        #         step=self.forward_counter)
 
     def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
@@ -638,5 +638,3 @@ class Layer(nn.Module):
         if self.prev_layer is not None:
             self.train_inhibitory_from_layer(
                 SynapticUpdateType.FORWARD, spike, self.prev_layer)
-
-            # logging.debug(f"trained layer {self.layer_settings.layer_id} synapses")
