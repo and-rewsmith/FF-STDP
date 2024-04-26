@@ -1,7 +1,18 @@
 from typing import Any, Optional
+import line_profiler
 
 import torch
 import torch.nn as nn
+
+
+class SpikeOperator():
+
+    @staticmethod
+    @line_profiler.profile
+    def forward(mem: torch.Tensor, threshold: torch.Tensor) -> torch.Tensor:
+        spk = torch.where(mem > threshold, torch.as_tensor(
+            1.0, device=mem.device), torch.as_tensor(0.0, device=mem.device))
+        return spk
 
 
 class LIF(nn.Module):
@@ -32,6 +43,7 @@ class LIF(nn.Module):
         self.mem: Optional[torch.Tensor] = None
         self.prereset_mem: Optional[torch.Tensor] = None
 
+    @line_profiler.profile
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         if self.mem == None:  # noqa
             self.mem = torch.zeros_like(current)
@@ -50,13 +62,3 @@ class LIF(nn.Module):
         self.mem -= reset  # type: ignore [operator]
 
         return spk
-
-    class SpikeOperator(torch.autograd.Function):
-
-        @staticmethod
-        def forward(ctx: Any, mem: torch.Tensor,
-                    threshold: torch.Tensor) -> torch.Tensor:
-            input = mem - threshold
-            spk = torch.zeros_like(input)
-            spk[input > 0] = 1.0
-            return spk
