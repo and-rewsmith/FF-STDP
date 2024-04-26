@@ -37,7 +37,7 @@ class LIF(nn.Module):
         # Initialize decay rate beta and threshold
         self.beta = beta
         self.threshold = threshold
-        self.spike_op = self.SpikeOperator.apply
+        self.spike_op = SpikeOperator.forward
         self.mem: Optional[torch.Tensor] = None
         self.prereset_mem: Optional[torch.Tensor] = None
 
