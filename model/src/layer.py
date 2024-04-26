@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import wandb
 
-from model.src.constants import DECAY_BETA, DELTA, \
+from model.src.constants import DELTA, \
     KAPPA, LAMBDA_HEBBIAN, THETA_REST, XI, ZENKE_BETA
 from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
@@ -310,11 +310,6 @@ class Layer(nn.Module):
         spk = self.lif.forward(total_current)
         self.forward_counter += 1
 
-        logging.debug("")
-        logging.debug(f"current: {str(total_current)}")
-        logging.debug(f"mem: {str(self.lif.mem())}")
-        logging.debug(f"spk: {str(spk)}")
-
         return spk
 
     # TODO: this will need to be removed or refactored once we move to more
@@ -447,10 +442,7 @@ class Layer(nn.Module):
         # update.
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
 
-        if from_layer is None:
-            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size).to(
-                device=self.layer_settings.device)
-        else:
+        if from_layer is not None:
             # flip the mask as this is for excitatory connections
             mask = (~from_layer.inhibitory_mask_vec.bool()).int()
             # expand the mask across the synaptic weight matrix
@@ -517,7 +509,10 @@ class Layer(nn.Module):
             # update weights
             dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
                                                          second_term_alpha)
-            dw_dt = dw_dt.sum(0) / dw_dt.shape[0] * mask
+
+            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+            if from_layer is not None:
+                dw_dt = dw_dt * mask
 
             match synaptic_update_type:
                 case SynapticUpdateType.RECURRENT:
@@ -556,10 +551,11 @@ class Layer(nn.Module):
                 )
 
                 # TODO: Remove this when we decouple the logging for the
-                # pointcloud benchmark from the model code
-                self.data: torch.Tensor = data
-                self.__log_equation_context(
-                    synaptic_weight_equation, dw_dt, spike, self.lif.mem())
+                # pointcloud benchmark from the model code. Disabling for now.
+                #
+                # self.data: torch.Tensor = data
+                # self.__log_equation_context(
+                #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     from_layer: Self) -> None:
@@ -642,5 +638,3 @@ class Layer(nn.Module):
         if self.prev_layer is not None:
             self.train_inhibitory_from_layer(
                 SynapticUpdateType.FORWARD, spike, self.prev_layer)
-
-        logging.debug(f"trained layer {self.layer_settings.layer_id} synapses")
