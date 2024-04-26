@@ -83,42 +83,38 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs):
         wandb.log({"loss": total_loss / len(dataloader)})
 
 
-def prepare_data(waveforms, base_sequence_length):
+def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
     inputs = []
     targets = []
     for waveform in waveforms:
         for start in range(waveform.shape[0] - base_sequence_length):
             end = start + base_sequence_length
             inputs.append(waveform[start:end])
-            targets.append(waveform[end])  # Target is the next token
+            targets.append(waveform[end])
     inputs = np.array(inputs)
     targets = np.array(targets)
-    return torch.tensor(inputs, dtype=torch.float32).unsqueeze(-1).to(device), torch.tensor(targets, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1).to(device)
 
-# def prepare_data(waveforms, base_sequence_length):
-#     inputs = []
-#     targets = []
-#     for waveform in waveforms:
-#         for start in range(waveform.shape[0] - base_sequence_length):
-#             end = start + base_sequence_length
-#             inputs.append(waveform[start:end])
-#             targets.append(waveform[end])  # Target is the next token
-#     return torch.tensor(inputs, dtype=torch.float32).unsqueeze(-1).to(device), torch.tensor(targets, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1).to(device)
+    # Splitting the data
+    split_index = int(len(inputs) * split_ratio)
+    train_inputs, test_inputs = inputs[:split_index], inputs[split_index:]
+    train_targets, test_targets = targets[:split_index], targets[split_index:]
+
+    # Convert to tensors
+    train_inputs = torch.tensor(train_inputs, dtype=torch.float32).unsqueeze(-1).to(device)
+    train_targets = torch.tensor(train_targets, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1).to(device)
+    test_inputs = torch.tensor(test_inputs, dtype=torch.float32).unsqueeze(-1).to(device)
+    test_targets = torch.tensor(test_targets, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1).to(device)
+
+    return (train_inputs, train_targets), (test_inputs, test_targets)
 
 
 if __name__ == "__main__":
-    wandb.init(
-        project="transformer-poc",
-        config={
-            "architecture": "initial",
-            "dataset": "waves",
-        }
-    )
+    wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
     num_epochs = 200
     num_sequences = 2
-    base_sequence_length = 400  # Consistent sequence length for training and inference
-    full_sequence_length = base_sequence_length * 6  # Longer sequence to enable sliding window
+    base_sequence_length = 400
+    full_sequence_length = base_sequence_length * 6
     num_modes = 2
     freq_range = (20, 30)
     amp_range = (0.5, 1.0)
@@ -126,7 +122,7 @@ if __name__ == "__main__":
     batch_size = 256
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
-    inputs, targets = prepare_data(waveforms, base_sequence_length)
+    (train_inputs, train_targets), (test_inputs, test_targets) = prepare_data(waveforms, base_sequence_length)
 
     plt.figure(figsize=(12, 6))
 
@@ -139,25 +135,34 @@ if __name__ == "__main__":
     plt.ylabel('Amplitude')
     plt.savefig('input_waveforms.png')
 
-    print(inputs.shape)
-    print(targets.shape)
+    train_dataset = torch.utils.data.TensorDataset(train_inputs, train_targets)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    dataset = torch.utils.data.TensorDataset(inputs, targets)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    test_dataset = torch.utils.data.TensorDataset(test_inputs, test_targets)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    model = TransformerDecoderModel(
-        input_dim=1,
-        pos_dim=10,
-        base_sequence_length=base_sequence_length,
-        nhead=4,
-        num_decoder_layers=3,
-        dim_feedforward=50
-    ).to(device)
-
+    model = TransformerDecoderModel(input_dim=1, pos_dim=10, base_sequence_length=base_sequence_length,
+                                    nhead=4, num_decoder_layers=3, dim_feedforward=50).to(device)
     loss_fn = nn.MSELoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-    train(model, dataloader, loss_fn, optimizer, num_epochs)
+    train(model, train_loader, loss_fn, optimizer, num_epochs)
+
+    def evaluate(model, test_loader, loss_fn):
+        model.eval()
+        total_loss = 0
+        with torch.no_grad():
+            for input_batch, target_batch in test_loader:
+                output_batch = model(input_batch)
+                target_batch = target_batch.squeeze(2)  # Remove the extra dimension
+                loss = loss_fn(output_batch, target_batch)
+                total_loss += loss.item()
+        average_loss = total_loss / len(test_loader)
+        print(f'Test Loss: {average_loss}')
+        return average_loss
+
+    # Evaluate the model on the test data
+    test_loss = evaluate(model, test_loader, loss_fn)
 
     # Autoregressive inference function to generate predictions after training
     def autoregressive_inference(model, initial_input, total_length, base_sequence_length):
@@ -176,13 +181,18 @@ if __name__ == "__main__":
                     input_sequence = input_sequence[:, -base_sequence_length:, :]
             return torch.cat(predictions, dim=1)
 
-    # Visualizing the predictions
-    test_input = inputs[:1, :base_sequence_length, :]  # Take the first sample for testing
-    predicted_output = autoregressive_inference(model, test_input, full_sequence_length, base_sequence_length)
-    predicted_output = predicted_output.squeeze().cpu().numpy()
+    # Construct the input to plot up until the prediction point
+    sampling_input = waveforms[0][0:base_sequence_length]
+    sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
 
-    # Combine the input sequence and predicted output
-    combined_output = np.concatenate((test_input.squeeze().cpu().numpy(), predicted_output))
+    # Autoregressive inference to generate the rest of the waveform
+    predicted_output = autoregressive_inference(model,
+                                                sampling_input, full_sequence_length, base_sequence_length)
+
+    # Massage into combined output for plotting
+    sampling_input = sampling_input.cpu().numpy()
+    predicted_output = predicted_output.squeeze().cpu().numpy()
+    combined_output = np.concatenate((waveforms[0][0:base_sequence_length], predicted_output))
 
     plt.figure(figsize=(12, 6))
     plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
@@ -193,19 +203,3 @@ if __name__ == "__main__":
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
     plt.savefig('waveform_comparison.png')
-
-    # # Visualizing the predictions
-    # test_input = inputs[:1, :base_sequence_length, :]  # Take the first sample for testing
-    # predicted_output = autoregressive_inference(model, test_input, full_sequence_length, base_sequence_length)
-    # predicted_output = predicted_output.squeeze().cpu().numpy()
-
-    # plt.figure(figsize=(12, 6))
-    # plt.plot(np.arange(full_sequence_length), waveforms[0], label='Original Full Waveform')
-    # plt.plot(np.arange(base_sequence_length, full_sequence_length),
-    #          predicted_output, label='Predicted Waveform', linestyle='--')
-    # plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
-    # plt.legend()
-    # plt.title('Comparison of Original and Predicted Waveforms')
-    # plt.xlabel('Time Steps')
-    # plt.ylabel('Amplitude')
-    # plt.savefig('waveform_comparison.png')
