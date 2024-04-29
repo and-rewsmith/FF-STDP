@@ -111,12 +111,12 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 if __name__ == "__main__":
     wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
-    num_epochs = 1
-    num_sequences = 20
+    num_epochs = 150
+    num_sequences = 40
     base_sequence_length = 300
-    full_sequence_length = base_sequence_length * 6
+    full_sequence_length = base_sequence_length * 3
     num_modes = 5
-    freq_range = (25, 50)
+    freq_range = (25, 75)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
     batch_size = 256
@@ -179,7 +179,6 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
             input_sequence = initial_input.clone()
-            print(input_sequence.shape)
             predictions = []
             while len(predictions) < (total_length - initial_input.size(1)):
                 output = model(input_sequence)
