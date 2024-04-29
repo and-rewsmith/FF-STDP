@@ -111,16 +111,17 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 if __name__ == "__main__":
     wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
-    num_epochs = 50
-    num_sequences = 2
-    base_sequence_length = 400
+    num_epochs = 1
+    num_sequences = 20
+    base_sequence_length = 300
     full_sequence_length = base_sequence_length * 6
-    num_modes = 2
-    freq_range = (20, 30)
+    num_modes = 5
+    freq_range = (25, 50)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
     batch_size = 256
-    plot_trained_autoregressive_inference = True  # If false make sure you have enough sequences
+    plot_trained_autoregressive_inference = False  # If false make sure you have enough sequences
+    pos_dim = 3
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
     (train_inputs, train_targets), (test_inputs, test_targets) = prepare_data(waveforms, base_sequence_length)
@@ -142,10 +143,18 @@ if __name__ == "__main__":
     test_dataset = torch.utils.data.TensorDataset(test_inputs, test_targets)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    model = TransformerDecoderModel(input_dim=1, pos_dim=10, base_sequence_length=base_sequence_length,
-                                    nhead=4, num_decoder_layers=3, dim_feedforward=50).to(device)
+    model = TransformerDecoderModel(input_dim=1, pos_dim=2, base_sequence_length=base_sequence_length,
+                                    nhead=2, num_decoder_layers=2, dim_feedforward=8).to(device)
+
+    # def count_parameters(model):
+    #     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # for param in model.named_parameters():
+    #     print(param)
+    # print(count_parameters(model))
+    # input()
+
     loss_fn = nn.MSELoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0002)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
     train(model, train_loader, loss_fn, optimizer, num_epochs)
 
@@ -170,6 +179,7 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
             input_sequence = initial_input.clone()
+            print(input_sequence.shape)
             predictions = []
             while len(predictions) < (total_length - initial_input.size(1)):
                 output = model(input_sequence)
