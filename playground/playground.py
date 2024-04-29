@@ -109,7 +109,7 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
-    num_epochs = 150
+    num_epochs = 1
     num_sequences = 40
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
@@ -117,7 +117,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     phase_range = (0, 2 * np.pi)
     batch_size = 256
     plot_trained_autoregressive_inference = False  # If false make sure we have enough sequences
-    pos_dim = 3
+    pos_dim = 2
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
     (train_inputs, train_targets), (test_inputs, test_targets) = prepare_data(waveforms, base_sequence_length)
@@ -207,7 +207,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     plt.title('Comparison of Original and Predicted Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
-    plt.savefig('waveform_comparison.png')
+    plt.savefig(f'waveform_comparison_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
 
 
 if __name__ == "__main__":
