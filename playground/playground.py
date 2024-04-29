@@ -108,19 +108,15 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
     return (train_inputs, train_targets), (test_inputs, test_targets)
 
 
-if __name__ == "__main__":
-    wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
-
+def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
     num_epochs = 150
     num_sequences = 40
-    base_sequence_length = 300
-    full_sequence_length = base_sequence_length * 3
-    num_modes = 5
+    full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
     amp_range = (0.5, 1.0)
     phase_range = (0, 2 * np.pi)
     batch_size = 256
-    plot_trained_autoregressive_inference = False  # If false make sure you have enough sequences
+    plot_trained_autoregressive_inference = False  # If false make sure we have enough sequences
     pos_dim = 3
 
     waveforms = generate_waveforms(num_sequences, full_sequence_length, num_modes, freq_range, amp_range, phase_range)
@@ -143,15 +139,12 @@ if __name__ == "__main__":
     test_dataset = torch.utils.data.TensorDataset(test_inputs, test_targets)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    model = TransformerDecoderModel(input_dim=1, pos_dim=2, base_sequence_length=base_sequence_length,
-                                    nhead=2, num_decoder_layers=2, dim_feedforward=8).to(device)
+    model = TransformerDecoderModel(input_dim=1, pos_dim=pos_dim, base_sequence_length=base_sequence_length,
+                                    nhead=num_heads, num_decoder_layers=num_decoder_layers, dim_feedforward=embedding_dim).to(device)
 
-    # def count_parameters(model):
-    #     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # for param in model.named_parameters():
-    #     print(param)
-    # print(count_parameters(model))
-    # input()
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(count_parameters(model))
 
     loss_fn = nn.MSELoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -215,3 +208,9 @@ if __name__ == "__main__":
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
     plt.savefig('waveform_comparison.png')
+
+
+if __name__ == "__main__":
+    wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
+
+    train_model_and_plot(num_heads=2, num_decoder_layers=2, embedding_dim=8)
