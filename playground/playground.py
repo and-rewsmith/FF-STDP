@@ -1,11 +1,11 @@
+import logging
+import random
+
 import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import wandb
-
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-print(f"Using device: {device}")
 
 
 def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range):
@@ -64,8 +64,9 @@ class TransformerDecoderModel(nn.Module):
         return self.fc_out(output[:, -1, :])  # Predict only the next token
 
 
-def train(model, dataloader, loss_fn, optimizer, num_epochs):
+def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename):
     model.train()
+    losses = []
     for epoch in range(num_epochs):
         total_loss = 0
         for batch_idx, (input_batch, target_batch) in enumerate(dataloader):
@@ -80,7 +81,17 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs):
             optimizer.step()
             total_loss += loss.item()
         print(f'Epoch {epoch+1}: Loss {total_loss / len(dataloader)}')
-        wandb.log({"loss": total_loss / len(dataloader)})
+        # wandb.log({"loss": total_loss / len(dataloader)})
+        losses.append(total_loss / len(dataloader))
+
+    # Plot loss curve after training
+    plt.figure(figsize=(12, 6))
+    plt.plot(np.arange(len(losses)), losses, label='Training Loss')
+    plt.legend()
+    plt.title('Training Loss Curve')
+    plt.xlabel('Batch')
+    plt.ylabel('Loss')
+    plt.savefig(saved_loss_curve_filename)  # Save loss curve
 
 
 def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
@@ -109,7 +120,7 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
-    num_epochs = 1
+    num_epochs = 3
     num_sequences = 40
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
@@ -144,12 +155,14 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
 
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(count_parameters(model))
+    num_params = count_parameters(model)
+    # print(count_parameters(model))
 
     loss_fn = nn.MSELoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    train(model, train_loader, loss_fn, optimizer, num_epochs)
+    saved_loss_curve_filename = f'loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
+    train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename)
 
     def evaluate(model, test_loader, loss_fn):
         model.eval()
@@ -207,10 +220,29 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     plt.title('Comparison of Original and Predicted Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
-    plt.savefig(f'waveform_comparison_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+    plt.savefig(f'waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+
+
+def set_logging() -> None:
+    """
+    Must be called after argparse.
+    """
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 if __name__ == "__main__":
-    wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
+    set_logging()
+
+    # torch.autograd.set_detect_anomaly(True)
+    torch.set_printoptions(precision=10, sci_mode=False)
+    rand = random.randint(1000, 9999)
+    torch.manual_seed(rand)
+
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+    # sweep_configuration
+    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="transformer-poc")
+    # wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
     train_model_and_plot(num_heads=2, num_decoder_layers=2, embedding_dim=8)
