@@ -164,8 +164,11 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300,
                          full_sequence_multiplier=3):
-    num_epochs = 300
-    num_sequences = 40
+    torch_seed = random.randint(1000, 9999)
+    torch.manual_seed(torch_seed)
+
+    num_epochs = 2
+    num_sequences = 2
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
     amp_range = (0.5, 1.0)
@@ -207,7 +210,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
     saved_loss_curve_filename = \
-        f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
+        f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}_{torch_seed}.png'
     train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename)
 
     def evaluate(model, test_loader, loss_fn):
@@ -267,7 +270,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
     plt.savefig(
-        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}.png')
 
 
 def set_logging() -> None:
@@ -297,8 +300,6 @@ if __name__ == "__main__":
     # torch.autograd.set_detect_anomaly(True)
 
     torch.set_printoptions(precision=10, sci_mode=False)
-    rand = random.randint(1000, 9999)
-    torch.manual_seed(rand)
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -309,7 +310,7 @@ if __name__ == "__main__":
 
     # hyperparams
     num_heads = [1, 2, 4]
-    num_layers = [1, 2, 3]
+    num_layers = [1, 2, 4]
     embedding_dims = [4, 8, 12, 16]
 
     # search order: bfs such that we train the smaller models first
@@ -346,6 +347,11 @@ if __name__ == "__main__":
     logging.info(f"Hyperparameter space: {hyperparameter_space}")
 
     for num_heads, num_decoder_layers, embedding_dim in hyperparameter_space:
-        logging.info(
-            f"Training model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim}")  # noqa
-        train_model_and_plot(num_heads, num_decoder_layers, embedding_dim)
+        for seed in range(3):
+            logging.info(
+                f"Training model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim} for seed {seed+1}")  # noqa
+
+            try:
+                train_model_and_plot(num_heads, num_decoder_layers, embedding_dim)
+            except Exception as e:
+                logging.warning(f"Failed to train model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim}")  # noqa
