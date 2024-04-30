@@ -129,7 +129,7 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_fi
             logging.debug("Early stopping")
             break
 
-        if epoch+1 % 20 == 0:
+        if (epoch+1) % 20 == 0:
             perform_inference(epoch)
 
     # Plot loss curve after training
@@ -196,7 +196,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     torch_seed = random.randint(1000, 9999)
     torch.manual_seed(torch_seed)
 
-    num_epochs = 2
+    num_epochs = 40
     num_sequences = 2
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
