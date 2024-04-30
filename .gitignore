@@ -13,4 +13,5 @@ running_log.log
 generated_artifacts/*
 !generated_artifacts/README.md
 
+output/
 wandb/

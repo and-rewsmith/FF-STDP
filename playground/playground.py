@@ -2,12 +2,34 @@ from collections import deque
 import logging
 import os
 import random
+import shutil
 
 import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-import wandb
+
+"""
+Running this file will output a folder structure like this in your working directory:
+
+output
+│
+├── waveforms
+│   ├── waveform_1475_1_2_4.png
+│   ├── waveform_1398_2_1_4.png
+│   └── waveform_1234_3_2_3.png
+│
+└── losses
+    ├── loss_curve_1475_1_2_4.png
+    ├── loss_curve_1398_2_1_4.png
+    └── loss_curve_1234_3_2_3.png
+
+The files have the following naming convention as defined by this line in code:
+```
+    plt.savefig(
+        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+```
+"""
 
 
 def generate_waveforms(num_sequences, sequence_length, num_modes, freq_range, amp_range, phase_range):
@@ -141,8 +163,8 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
-    num_epochs = 300
-    num_sequences = 40
+    num_epochs = 2
+    num_sequences = 2
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
     amp_range = (0.5, 1.0)
@@ -199,7 +221,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
         return average_loss
 
     # Evaluate the model on the test data
-    test_loss = evaluate(model, test_loader, loss_fn)
+    _test_loss = evaluate(model, test_loader, loss_fn)
 
     # Autoregressive inference function to generate predictions after training
     def autoregressive_inference(model, initial_input, total_length, base_sequence_length):
@@ -255,16 +277,29 @@ def set_logging() -> None:
     logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
 
+def delete_directory(directory_path):
+    # Check if the directory exists
+    if os.path.exists(directory_path):
+        # Remove the directory and all its contents
+        shutil.rmtree(directory_path)
+        print(f'Directory "{directory_path}" has been deleted.')
+    else:
+        print(f'Directory "{directory_path}" does not exist.')
+
+
 if __name__ == "__main__":
     set_logging()
 
+    # TODO: Figure out why this gives anomolies
     # torch.autograd.set_detect_anomaly(True)
+
     torch.set_printoptions(precision=10, sci_mode=False)
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
+    delete_directory("./output")
     os.makedirs("./output", exist_ok=True)
     os.makedirs("./output/losses", exist_ok=True)
     os.makedirs("./output/waveforms", exist_ok=True)
@@ -273,9 +308,9 @@ if __name__ == "__main__":
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="transformer-poc")
     # wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
-    num_heads = [1, 2, 3, 4]
+    num_heads = [1, 2, 4]
     num_layers = [1, 2, 3]
-    embedding_dims = [4, 8, 10, 16]
+    embedding_dims = [4, 8, 12, 16]
 
     i = 0
     j = 0
