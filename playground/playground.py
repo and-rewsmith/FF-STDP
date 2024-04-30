@@ -163,8 +163,8 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
-    num_epochs = 2
-    num_sequences = 2
+    num_epochs = 300
+    num_sequences = 40
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
     amp_range = (0.5, 1.0)
@@ -304,14 +304,12 @@ if __name__ == "__main__":
     os.makedirs("./output/losses", exist_ok=True)
     os.makedirs("./output/waveforms", exist_ok=True)
 
-    # sweep_configuration
-    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="transformer-poc")
-    # wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
-
+    # hyperparams
     num_heads = [1, 2, 4]
     num_layers = [1, 2, 3]
     embedding_dims = [4, 8, 12, 16]
 
+    # search order: bfs such that we train the smaller models first
     i = 0
     j = 0
     k = 0
@@ -321,28 +319,23 @@ if __name__ == "__main__":
     seen = set()
     while len(queue) > 0:
         i, j, k = queue.popleft()
-        print(i, j, k)
 
-        added = False
         hyperparameter_space.append((num_heads[i], num_layers[j], embedding_dims[k]))
 
         if k < len(embedding_dims) - 1 and (i, j, k+1) not in seen:
             k += 1
-            added = True
             seen.add((i, j, k))
             queue.append((i, j, k))
             k -= 1
 
         if j < len(num_layers) - 1 and (i, j+1, k) not in seen:
             j += 1
-            added = True
             seen.add((i, j, k))
             queue.append((i, j, k))
             j -= 1
 
         if i < len(num_heads) - 1 and (i+1, j, k) not in seen:
             i += 1
-            added = True
             seen.add((i, j, k))
             queue.append((i, j, k))
             i -= 1
