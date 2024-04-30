@@ -88,7 +88,19 @@ class TransformerDecoderModel(nn.Module):
         return self.fc_out(output[:, -1, :])  # Predict only the next token
 
 
-def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename, patience=15, min_delta=1e-5):
+def train(model,
+          dataloader,
+          loss_fn,
+          optimizer,
+          num_epochs,
+          saved_loss_curve_filename,
+          num_params,
+          plot_trained_autoregressive_inference,
+          waveforms,
+          base_sequence_length,
+          full_sequence_length,
+          patience=15,
+          min_delta=1e-5):
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -98,6 +110,8 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_fi
     epochs_no_improve = 0
 
     for epoch in range(num_epochs):
+        model.train()
+
         total_loss = 0
 
         for batch_idx, (input_batch, target_batch) in enumerate(dataloader):
@@ -124,6 +138,36 @@ def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_fi
         if epochs_no_improve >= patience:
             logging.debug("Early stopping")
             break
+
+        if epoch % 20 == 0:
+            # perform autoregressive inference
+            model.eval()
+
+            waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
+
+            # Construct the input to plot up until the prediction point
+            sampling_input = waveforms[waveform_to_plot][0:base_sequence_length]
+            sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
+
+            # Autoregressive inference to generate the rest of the waveform
+            predicted_output = autoregressive_inference(model,
+                                                        sampling_input, full_sequence_length, base_sequence_length)
+
+            # Massage into combined output for plotting
+            sampling_input = sampling_input.cpu().numpy()
+            predicted_output = predicted_output.squeeze().cpu().numpy()
+            combined_output = np.concatenate((waveforms[waveform_to_plot][0:base_sequence_length], predicted_output))
+
+            plt.figure(figsize=(12, 6))
+            plt.plot(np.arange(full_sequence_length), waveforms[waveform_to_plot], label='Original Full Waveform')
+            plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
+            plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
+            plt.legend()
+            plt.title('Comparison of Original and Predicted Waveforms')
+            plt.xlabel('Time Steps')
+            plt.ylabel('Amplitude')
+            plt.savefig(
+                f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}.png')
 
     # Plot loss curve after training
     plt.figure(figsize=(12, 6))
@@ -160,6 +204,26 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
     test_targets = torch.tensor(test_targets, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1).to(device)
 
     return (train_inputs, train_targets), (test_inputs, test_targets)
+
+
+def autoregressive_inference(model, initial_input, total_length, base_sequence_length):
+    """
+    Autoregressive inference function to generate predictions during/after training
+    """
+    model.eval()
+    with torch.no_grad():
+        input_sequence = initial_input.clone()
+        predictions = []
+        while len(predictions) < (total_length - initial_input.size(1)):
+            output = model(input_sequence)
+            predictions.append(output)
+            output = output.unsqueeze(1)
+            # Append the predicted token to the input sequence
+            input_sequence = torch.cat((input_sequence, output), dim=1)
+            # Sliding window: remove the oldest token if sequence length exceeds base_sequence_length
+            if input_sequence.size(1) > base_sequence_length:
+                input_sequence = input_sequence[:, -base_sequence_length:, :]
+        return torch.cat(predictions, dim=1)
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300,
@@ -228,23 +292,6 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
 
     # Evaluate the model on the test data
     _test_loss = evaluate(model, test_loader, loss_fn)
-
-    # Autoregressive inference function to generate predictions after training
-    def autoregressive_inference(model, initial_input, total_length, base_sequence_length):
-        model.eval()
-        with torch.no_grad():
-            input_sequence = initial_input.clone()
-            predictions = []
-            while len(predictions) < (total_length - initial_input.size(1)):
-                output = model(input_sequence)
-                predictions.append(output)
-                output = output.unsqueeze(1)
-                # Append the predicted token to the input sequence
-                input_sequence = torch.cat((input_sequence, output), dim=1)
-                # Sliding window: remove the oldest token if sequence length exceeds base_sequence_length
-                if input_sequence.size(1) > base_sequence_length:
-                    input_sequence = input_sequence[:, -base_sequence_length:, :]
-            return torch.cat(predictions, dim=1)
 
     waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
 
