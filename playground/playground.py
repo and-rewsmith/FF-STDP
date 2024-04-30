@@ -13,21 +13,24 @@ import matplotlib.pyplot as plt
 Running this file will output a folder structure like this in your working directory:
 
 output
-│
-├── waveforms
-│   ├── waveform_1475_1_2_4.png
-│   ├── waveform_1398_2_1_4.png
-│   └── waveform_1234_3_2_3.png
-│
-└── losses
-    ├── loss_curve_1475_1_2_4.png
-    ├── loss_curve_1398_2_1_4.png
-    └── loss_curve_1234_3_2_3.png
+├── input_waveforms.png
+├── losses
+│   ├── loss_curve_1045_1_1_4_3698.png
+│   ├── loss_curve_1045_1_1_4_6592.png
+└── waveforms
+    ├── waveform_comparison_1045_1_1_1_3698_0.png
+    ├── waveform_comparison_1045_1_1_1_6592_0.png
 
-The files have the following naming convention as defined by this line in code:
+For LOSSES, the files have the following naming convention as defined by this line in code:
 ```
-    plt.savefig(
-        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+    saved_loss_curve_filename = \
+        f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}_{torch_seed}.png'
+```
+
+For WAVEFORMS, the files have the following naming convention as defined by this line in code:
+```
+        plt.savefig(
+            f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}_{epoch}.png')
 ```
 """
 
@@ -88,23 +91,10 @@ class TransformerDecoderModel(nn.Module):
         return self.fc_out(output[:, -1, :])  # Predict only the next token
 
 
-def train(model,
-          dataloader,
-          loss_fn,
-          optimizer,
-          num_epochs,
-          saved_loss_curve_filename,
-          num_params,
-          plot_trained_autoregressive_inference,
-          waveforms,
-          base_sequence_length,
-          full_sequence_length,
-          patience=15,
-          min_delta=1e-5):
+def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename, perform_inference, patience=15, min_delta=1e-5):
     import numpy as np
     import matplotlib.pyplot as plt
 
-    model.train()
     losses = []
     best_loss = np.inf
     epochs_no_improve = 0
@@ -139,35 +129,8 @@ def train(model,
             logging.debug("Early stopping")
             break
 
-        if epoch % 20 == 0:
-            # perform autoregressive inference
-            model.eval()
-
-            waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
-
-            # Construct the input to plot up until the prediction point
-            sampling_input = waveforms[waveform_to_plot][0:base_sequence_length]
-            sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
-
-            # Autoregressive inference to generate the rest of the waveform
-            predicted_output = autoregressive_inference(model,
-                                                        sampling_input, full_sequence_length, base_sequence_length)
-
-            # Massage into combined output for plotting
-            sampling_input = sampling_input.cpu().numpy()
-            predicted_output = predicted_output.squeeze().cpu().numpy()
-            combined_output = np.concatenate((waveforms[waveform_to_plot][0:base_sequence_length], predicted_output))
-
-            plt.figure(figsize=(12, 6))
-            plt.plot(np.arange(full_sequence_length), waveforms[waveform_to_plot], label='Original Full Waveform')
-            plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
-            plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
-            plt.legend()
-            plt.title('Comparison of Original and Predicted Waveforms')
-            plt.xlabel('Time Steps')
-            plt.ylabel('Amplitude')
-            plt.savefig(
-                f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}.png')
+        if epoch+1 % 20 == 0:
+            perform_inference(epoch)
 
     # Plot loss curve after training
     plt.figure(figsize=(12, 6))
@@ -177,6 +140,8 @@ def train(model,
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.savefig(saved_loss_curve_filename)
+
+    perform_inference(epoch)
 
     return losses
 
@@ -273,9 +238,37 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     loss_fn = nn.MSELoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
+    def perform_inference(epoch):
+        model.eval()
+        waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
+
+        # Construct the input to plot up until the prediction point
+        sampling_input = waveforms[waveform_to_plot][0:base_sequence_length]
+        sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
+
+        # Autoregressive inference to generate the rest of the waveform
+        predicted_output = autoregressive_inference(model,
+                                                    sampling_input, full_sequence_length, base_sequence_length)
+
+        # Massage into combined output for plotting
+        sampling_input = sampling_input.cpu().numpy()
+        predicted_output = predicted_output.squeeze().cpu().numpy()
+        combined_output = np.concatenate((waveforms[waveform_to_plot][0:base_sequence_length], predicted_output))
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(np.arange(full_sequence_length), waveforms[waveform_to_plot], label='Original Full Waveform')
+        plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
+        plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
+        plt.legend()
+        plt.title('Comparison of Original and Predicted Waveforms')
+        plt.xlabel('Time Steps')
+        plt.ylabel('Amplitude')
+        plt.savefig(
+            f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}_{epoch}.png')
+
     saved_loss_curve_filename = \
         f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}_{torch_seed}.png'
-    train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename)
+    train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename, perform_inference)
 
     def evaluate(model, test_loader, loss_fn):
         model.eval()
@@ -292,32 +285,6 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
 
     # Evaluate the model on the test data
     _test_loss = evaluate(model, test_loader, loss_fn)
-
-    waveform_to_plot = 0 if plot_trained_autoregressive_inference else -1
-
-    # Construct the input to plot up until the prediction point
-    sampling_input = waveforms[waveform_to_plot][0:base_sequence_length]
-    sampling_input = torch.tensor(sampling_input, dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(device)
-
-    # Autoregressive inference to generate the rest of the waveform
-    predicted_output = autoregressive_inference(model,
-                                                sampling_input, full_sequence_length, base_sequence_length)
-
-    # Massage into combined output for plotting
-    sampling_input = sampling_input.cpu().numpy()
-    predicted_output = predicted_output.squeeze().cpu().numpy()
-    combined_output = np.concatenate((waveforms[waveform_to_plot][0:base_sequence_length], predicted_output))
-
-    plt.figure(figsize=(12, 6))
-    plt.plot(np.arange(full_sequence_length), waveforms[waveform_to_plot], label='Original Full Waveform')
-    plt.plot(np.arange(full_sequence_length), combined_output, label='Predicted Waveform', linestyle='--')
-    plt.axvline(x=base_sequence_length, color='r', linestyle=':', label='Start of Prediction')
-    plt.legend()
-    plt.title('Comparison of Original and Predicted Waveforms')
-    plt.xlabel('Time Steps')
-    plt.ylabel('Amplitude')
-    plt.savefig(
-        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}_{torch_seed}.png')
 
 
 def set_logging() -> None:
