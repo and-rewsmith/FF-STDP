@@ -1,4 +1,6 @@
+from collections import deque
 import logging
+import os
 import random
 
 import torch
@@ -64,34 +66,53 @@ class TransformerDecoderModel(nn.Module):
         return self.fc_out(output[:, -1, :])  # Predict only the next token
 
 
-def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename):
+def train(model, dataloader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename, patience=15, min_delta=1e-5):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
     model.train()
     losses = []
+    best_loss = np.inf
+    epochs_no_improve = 0
+
     for epoch in range(num_epochs):
         total_loss = 0
+
         for batch_idx, (input_batch, target_batch) in enumerate(dataloader):
-            print(f"batch: {batch_idx}")
-            print(f"input_batch: {input_batch.shape}")
-            # input()
+            logging.debug(f"Batch: {batch_idx}")
             optimizer.zero_grad()
             output_batch = model(input_batch)
-            target_batch = target_batch.squeeze(2)  # Remove the extra dimension
+            target_batch = target_batch.squeeze(2)  # Remove extra dimension
             loss = loss_fn(output_batch, target_batch)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-        print(f'Epoch {epoch+1}: Loss {total_loss / len(dataloader)}')
-        # wandb.log({"loss": total_loss / len(dataloader)})
-        losses.append(total_loss / len(dataloader))
+
+        epoch_loss = total_loss / len(dataloader)
+        logging.info(f'Epoch {epoch + 1}: Loss {epoch_loss}')
+        losses.append(epoch_loss)
+
+        # Check for early stopping criteria
+        if epoch_loss < best_loss - min_delta:
+            best_loss = epoch_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= patience:
+            logging.debug("Early stopping")
+            break
 
     # Plot loss curve after training
     plt.figure(figsize=(12, 6))
     plt.plot(np.arange(len(losses)), losses, label='Training Loss')
     plt.legend()
     plt.title('Training Loss Curve')
-    plt.xlabel('Batch')
+    plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.savefig(saved_loss_curve_filename)  # Save loss curve
+    plt.savefig(saved_loss_curve_filename)
+
+    return losses
 
 
 def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
@@ -120,7 +141,7 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
 
 
 def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
-    num_epochs = 3
+    num_epochs = 300
     num_sequences = 40
     full_sequence_length = base_sequence_length * full_sequence_multiplier
     freq_range = (25, 75)
@@ -142,7 +163,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     plt.title('Input Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
-    plt.savefig('input_waveforms.png')
+    plt.savefig('output/input_waveforms.png')
 
     train_dataset = torch.utils.data.TensorDataset(train_inputs, train_targets)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -159,9 +180,9 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     # print(count_parameters(model))
 
     loss_fn = nn.MSELoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
-    saved_loss_curve_filename = f'loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
+    saved_loss_curve_filename = f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
     train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename)
 
     def evaluate(model, test_loader, loss_fn):
@@ -174,7 +195,7 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
                 loss = loss_fn(output_batch, target_batch)
                 total_loss += loss.item()
         average_loss = total_loss / len(test_loader)
-        print(f'Test Loss: {average_loss}')
+        logging.info(f'Test Loss: {average_loss}')
         return average_loss
 
     # Evaluate the model on the test data
@@ -220,15 +241,18 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     plt.title('Comparison of Original and Predicted Waveforms')
     plt.xlabel('Time Steps')
     plt.ylabel('Amplitude')
-    plt.savefig(f'waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
+    plt.savefig(
+        f'output/waveforms/waveform_comparison_{num_params}_{num_decoder_layers}_{num_heads}_{num_decoder_layers}.png')
 
 
 def set_logging() -> None:
     """
     Must be called after argparse.
     """
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s - %(levelname)s - %(message)s')
+
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
 
 if __name__ == "__main__":
@@ -241,8 +265,57 @@ if __name__ == "__main__":
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
+    os.makedirs("./output", exist_ok=True)
+    os.makedirs("./output/losses", exist_ok=True)
+    os.makedirs("./output/waveforms", exist_ok=True)
+
     # sweep_configuration
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="transformer-poc")
     # wandb.init(project="transformer-poc", config={"architecture": "initial", "dataset": "waves"})
 
-    train_model_and_plot(num_heads=2, num_decoder_layers=2, embedding_dim=8)
+    num_heads = [1, 2, 3, 4]
+    num_layers = [1, 2, 3]
+    embedding_dims = [4, 8, 10, 16]
+
+    i = 0
+    j = 0
+    k = 0
+    hyperparameter_space = []
+    queue = deque()
+    queue.append((i, j, k))
+    seen = set()
+    while len(queue) > 0:
+        i, j, k = queue.popleft()
+        print(i, j, k)
+
+        added = False
+        hyperparameter_space.append((num_heads[i], num_layers[j], embedding_dims[k]))
+
+        if k < len(embedding_dims) - 1 and (i, j, k+1) not in seen:
+            k += 1
+            added = True
+            seen.add((i, j, k))
+            queue.append((i, j, k))
+            k -= 1
+
+        if j < len(num_layers) - 1 and (i, j+1, k) not in seen:
+            j += 1
+            added = True
+            seen.add((i, j, k))
+            queue.append((i, j, k))
+            j -= 1
+
+        if i < len(num_heads) - 1 and (i+1, j, k) not in seen:
+            i += 1
+            added = True
+            seen.add((i, j, k))
+            queue.append((i, j, k))
+            i -= 1
+
+    logging.info(f"Hyperparameter space: {hyperparameter_space}")
+    input()
+
+    for num_heads, num_decoder_layers, embedding_dim in hyperparameter_space:
+        logging.info(
+            f"Training model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim}")
+        train_model_and_plot(num_heads, num_decoder_layers, embedding_dim)
