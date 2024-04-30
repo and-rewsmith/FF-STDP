@@ -162,7 +162,8 @@ def prepare_data(waveforms, base_sequence_length, split_ratio=0.8):
     return (train_inputs, train_targets), (test_inputs, test_targets)
 
 
-def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300, full_sequence_multiplier=3):
+def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes=3, base_sequence_length=300,
+                         full_sequence_multiplier=3):
     num_epochs = 300
     num_sequences = 40
     full_sequence_length = base_sequence_length * full_sequence_multiplier
@@ -194,7 +195,8 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     model = TransformerDecoderModel(input_dim=1, pos_dim=pos_dim, base_sequence_length=base_sequence_length,
-                                    nhead=num_heads, num_decoder_layers=num_decoder_layers, dim_feedforward=embedding_dim).to(device)
+                                    nhead=num_heads, num_decoder_layers=num_decoder_layers,
+                                    dim_feedforward=embedding_dim).to(device)
 
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -204,7 +206,8 @@ def train_model_and_plot(num_heads, num_decoder_layers, embedding_dim, num_modes
     loss_fn = nn.MSELoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 
-    saved_loss_curve_filename = f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
+    saved_loss_curve_filename = \
+        f'output/losses/loss_curve_{num_params}_{num_heads}_{num_decoder_layers}_{embedding_dim}.png'
     train(model, train_loader, loss_fn, optimizer, num_epochs, saved_loss_curve_filename)
 
     def evaluate(model, test_loader, loss_fn):
@@ -341,9 +344,8 @@ if __name__ == "__main__":
             i -= 1
 
     logging.info(f"Hyperparameter space: {hyperparameter_space}")
-    input()
 
     for num_heads, num_decoder_layers, embedding_dim in hyperparameter_space:
         logging.info(
-            f"Training model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim}")
+            f"Training model with num_heads={num_heads}, num_decoder_layers={num_decoder_layers}, embedding_dim={embedding_dim}")  # noqa
         train_model_and_plot(num_heads, num_decoder_layers, embedding_dim)
