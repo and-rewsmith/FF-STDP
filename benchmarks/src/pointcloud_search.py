@@ -214,8 +214,8 @@ if __name__ == "__main__":
             "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
             "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
             "decay_beta": {"min": 0.8, "max": 0.9},
-            "threshold_scale": {"min": 1.0, "max": 1.5},
-            "threshold_decay": {"min": 0.9, "max": 0.99},
+            "threshold_scale": {"min": 1.0, "max": 1.0},
+            "threshold_decay": {"min": 1.0, "max": 1.0},
         },
     }
 
