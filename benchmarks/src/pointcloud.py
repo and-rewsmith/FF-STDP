@@ -23,7 +23,7 @@ if __name__ == "__main__":
     logging_util.set_logging()
 
     settings = Settings(
-        layer_sizes=[2, 5],
+        layer_sizes=[2],
         data_size=2,
         batch_size=BATCH_SIZE,
         learning_rate=0.01,
@@ -32,17 +32,17 @@ if __name__ == "__main__":
         device=torch.device("cpu")
     )
 
-    wandb.init(
-        # set the wandb project where this run will be logged
-        project="LPL-SNN-2",
+    # wandb.init(
+    #     # set the wandb project where this run will be logged
+    #     project="LPL-SNN-2",
 
-        # track hyperparameters and run metadata
-        config={
-            "architecture": "initial",
-            "dataset": "point-cloud",
-            "settings": settings,
-        }
-    )
+    #     # track hyperparameters and run metadata
+    #     config={
+    #         "architecture": "initial",
+    #         "dataset": "point-cloud",
+    #         "settings": settings,
+    #     }
+    # )
 
     try:
         train_dataframe = pd.read_csv(TRAIN_DATA_PATH)

@@ -196,10 +196,11 @@ if __name__ == "__main__":
     logging.debug(message)
 
     sweep_configuration = {
-        "method": "bayes",
+        "method": "random",
         "metric": {"goal": "maximize", "name": "pass_rate"},
         "parameters": {
-            "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
+            # "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
+            "layer_sizes": {"values": [[2]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
             "percentage_inhibitory": {"min": 30, "max": 60},
@@ -219,5 +220,5 @@ if __name__ == "__main__":
         },
     }
 
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-2")
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
     wandb.agent(sweep_id, function=objective)

@@ -14,4 +14,4 @@ if __name__ == "__main__":
     plt.xlabel('X-coordinate')
     plt.ylabel('Y-coordinate')
     plt.grid(True)
-    plt.show()
+    plt.savefig("scatter_plot.png")

@@ -97,6 +97,9 @@ class Net(nn.Module):
 
                 for timestep in tqdm(range(batch.shape[0]), desc="Timesteps"):
                     for i, layer in enumerate(self.layers):
+                        # TODOPRE: absolutely remove!
+                        self.layers[0].recurrent_weights.linear.weight.data.fill_(0)
+
                         if i == 0:
                             spk = layer.forward(batch[timestep])
                         else:
