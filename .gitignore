@@ -14,3 +14,5 @@ generated_artifacts/*
 !generated_artifacts/README.md
 
 wandb/
+
+output/
