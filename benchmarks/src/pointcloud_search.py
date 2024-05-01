@@ -199,8 +199,7 @@ if __name__ == "__main__":
         "method": "random",
         "metric": {"goal": "maximize", "name": "pass_rate"},
         "parameters": {
-            # "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
-            "layer_sizes": {"values": [[2]]},
+            "layer_sizes": {"values": [[2], [2, 10, 10], [2, 20, 20], [2, 20, 20, 20], [2, 40, 40], [2, 30, 30, 30]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
             "percentage_inhibitory": {"min": 30, "max": 60},
