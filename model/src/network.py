@@ -37,6 +37,8 @@ class Net(nn.Module):
                                            settings.exc_to_inhib_conn_sigma_squared,
                                            settings.layer_sparsity,
                                            settings.decay_beta,
+                                           settings.threshold_scale,
+                                           settings.threshold_decay,
                                            settings.tau_mean,
                                            settings.tau_var,
                                            settings.tau_stdp,

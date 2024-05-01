@@ -1,11 +1,10 @@
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
 
 
 class SpikeOperator():
-
     @staticmethod
     def forward(mem: torch.Tensor, threshold: torch.Tensor) -> torch.Tensor:
         spk = torch.where(mem > threshold, torch.as_tensor(
@@ -14,7 +13,7 @@ class SpikeOperator():
 
 
 class LIF(nn.Module):
-    def __init__(self, beta: float, threshold: float = 1.0):
+    def __init__(self, beta: float, threshold_scale: float, threshold_decay: float, threshold: float = 1.0):
         """
         NOTE: Initialization of mem to zeros at initial forward pass will cause
         transient behavior
@@ -34,28 +33,40 @@ class LIF(nn.Module):
         3. Reset the membrane potential if spiked
         """
         super(LIF, self).__init__()
-        # Initialize decay rate beta and threshold
+
         self.beta = beta
         self.threshold = threshold
+        self.threshold_scale = threshold_scale
+        self.threshold_decay = threshold_decay
+
         self.spike_op = SpikeOperator.forward
+
         self.mem: Optional[torch.Tensor] = None
         self.prereset_mem: Optional[torch.Tensor] = None
+        self.adaptive_threshold: Optional[torch.Tensor] = None
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         if self.mem == None:  # noqa
             self.mem = torch.zeros_like(current)
             self.prereset_mem = torch.zeros_like(current)
+            self.adaptive_threshold = torch.full_like(current, self.threshold)
+
+        assert self.mem is not None
+        assert self.adaptive_threshold is not None
 
         # Update membrane potential: decay and add current
-        assert self.mem is not None
         self.mem = self.beta * self.mem + current
         self.prereset_mem = self.mem.clone()
 
-        # Spike if membrane potential exceeds threshold
-        spk: torch.Tensor = self.spike_op(self.mem, self.threshold)
+        # Spike if membrane potential exceeds adaptive threshold
+        spk: torch.Tensor = self.spike_op(self.mem, self.adaptive_threshold)
 
         # Reset the membrane potential if spiked
-        reset = spk * self.threshold
+        reset = spk * self.adaptive_threshold
         self.mem -= reset  # type: ignore [operator]
+
+        # Update adaptive threshold
+        self.adaptive_threshold = torch.where(spk.bool(), self.adaptive_threshold * self.threshold_scale,
+                                              self.adaptive_threshold * self.threshold_decay)
 
         return spk

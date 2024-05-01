@@ -39,6 +39,8 @@ def objective() -> None:
     exc_to_inhib_conn_sigma_squared = wandb.config.exc_to_inhib_conn_sigma_squared
     layer_sparsity = wandb.config.layer_sparsity
     decay_beta = wandb.config.decay_beta
+    threshold_scale = wandb.config.threshold_scale
+    threshold_decay = wandb.config.threshold_decay
     tau_mean = wandb.config.tau_mean
     tau_var = wandb.config.tau_var
     tau_stdp = wandb.config.tau_stdp
@@ -57,6 +59,8 @@ def objective() -> None:
     exc_to_inhib_conn_sigma_squared: {exc_to_inhib_conn_sigma_squared}
     layer_sparsity: {layer_sparsity}
     decay_beta: {decay_beta},
+    threshold_scale: {threshold_scale},
+    threshold_decay: {threshold_decay},
     tau_mean: {tau_mean},
     tau_var: {tau_var},
     tau_stdp: {tau_stdp},
@@ -78,8 +82,8 @@ def objective() -> None:
                 running_log,
                 layer_sizes, learning_rate, dt, percentage_inhibitory,
                 exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
-                decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha,
-                tau_rise_epsilon, tau_fall_epsilon
+                decay_beta, threshold_scale, threshold_decay, tau_mean, tau_var, tau_stdp,
+                tau_rise_alpha, tau_fall_alpha, tau_rise_epsilon, tau_fall_epsilon
             )
             if is_pass:
                 pass_count += 1
@@ -102,6 +106,8 @@ def bench_specific_seed(running_log: TextIO,
                         exc_to_inhib_conn_sigma_squared: float,
                         layer_sparsity: float,
                         decay_beta: float,
+                        threshold_scale: float,
+                        threshold_decay: float,
                         tau_mean: float,
                         tau_var: float,
                         tau_stdp: float,
@@ -124,6 +130,8 @@ def bench_specific_seed(running_log: TextIO,
         exc_to_inhib_conn_c=exc_to_inhib_conn_c,
         exc_to_inhib_conn_sigma_squared=exc_to_inhib_conn_sigma_squared,
         layer_sparsity=layer_sparsity,
+        threshold_scale=threshold_scale,
+        threshold_decay=threshold_decay,
         decay_beta=decay_beta,
         tau_mean=tau_mean,
         tau_var=tau_var,
@@ -206,6 +214,8 @@ if __name__ == "__main__":
             "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
             "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
             "decay_beta": {"min": 0.8, "max": 0.9},
+            "threshold_scale": {"min": 1.0, "max": 1.5},
+            "threshold_decay": {"min": 0.9, "max": 0.99},
         },
     }
 

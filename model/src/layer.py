@@ -171,7 +171,7 @@ class Layer(nn.Module):
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
-            device=self.layer_settings.device, trace_shape=trace_shape)
+            device=self.layer_settings.device, trace_shape=trace_shape, tau_stdp=layer_settings.tau_stdp)
 
         self.forward_counter = 0
 
