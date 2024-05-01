@@ -12,3 +12,5 @@ generated_artifacts/*
 
 wandb/
 output/
+
+*.log
