@@ -7,6 +7,7 @@ import pandas as pd
 import wandb
 import torch
 from torch.utils.data import DataLoader
+from datasets.src.image_detection.dataset import ImageDataset
 
 from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
@@ -17,8 +18,7 @@ from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
-THIS_TEST_NUM_SAMPLES = 5
-THIS_TEST_NUM_DATAPOINTS = 8000
+BATCH_SIZE = 256
 
 
 def objective() -> None:
@@ -71,26 +71,25 @@ def objective() -> None:
         running_log.write(f"{run_settings}")
         running_log.flush()
 
-        pass_count = 0
-        total_count = 0
-        for _ in range(10):
-            is_pass = bench_specific_seed(
+        cum_pass_rate = 0
+        num_seeds_bench = 10
+        for _ in range(num_seeds_bench):
+            pass_rate = bench_specific_seed(
                 running_log,
                 layer_sizes, learning_rate, dt, percentage_inhibitory,
                 exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
                 decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha,
                 tau_rise_epsilon, tau_fall_epsilon
             )
-            if is_pass:
-                pass_count += 1
+            cum_pass_rate += pass_rate
             total_count += 1
 
         running_log.write(
-            run_settings + f"\npass_rate: {pass_count / total_count}\n\n======================================\
+            run_settings + f"\average_image_predict_success: {cum_pass_rate / num_seeds_bench}\n\n======================================\
                 =========================================")
         running_log.flush()
 
-    wandb.log({"pass_rate": pass_count / total_count})
+    wandb.log({"average_image_predict_success": cum_pass_rate / num_seeds_bench})
 
 
 def bench_specific_seed(running_log: TextIO,
@@ -115,7 +114,7 @@ def bench_specific_seed(running_log: TextIO,
     settings = Settings(
         layer_sizes=layer_sizes,
         data_size=2,
-        batch_size=THIS_TEST_NUM_SAMPLES,
+        batch_size=BATCH_SIZE,
         learning_rate=learning_rate,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
@@ -135,45 +134,63 @@ def bench_specific_seed(running_log: TextIO,
         device=torch.device("cpu")
     )
 
-    try:
-        train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
-    except FileNotFoundError:
-        train_dataframe = None
-    train_sequential_dataset = SequentialDataset(DatasetType.TRAIN,
-                                                 train_dataframe, num_timesteps=THIS_TEST_NUM_DATAPOINTS,
-                                                 planned_batch_size=settings.batch_size)
-    train_data_loader = DataLoader(
-        train_sequential_dataset, batch_size=settings.batch_size, shuffle=False)
+    dataset = ImageDataset(
+        num_timesteps_each_image=20,
+        num_timesteps_flash=20,
+        num_switches=5,
+        switch_probability=0.25
+    )
+    train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
+    decoder = Decoder()
 
-    layer: Layer = net.layers[0]
-    weights = layer.forward_weights.weight()
-    mask = layer.excitatory_mask_vec
-    mask_expanded = mask.unsqueeze(
-        1).expand(-1, layer.layer_settings.data_size)
-    starting_weights_filtered_and_masked = weights[mask_expanded.bool()]
+    for batch, labels in train_dataloader:
+        batch = batch.permute(1, 0, 2)
+        for timestep_data in batch:
+            net.process_data_single_timestep(timestep_data)
 
-    net.process_data_online(train_data_loader)
+        layer_activations = net.layer_activations()
+        internal_state = torch.concat(layer_activations, dim=1)
 
-    weights = layer.forward_weights.weight()
-    weights_filtered_and_masked = weights[mask_expanded.bool()]
+        decoder.train(internal_state, labels)
 
-    is_pass: bool = weights_filtered_and_masked[0] > 0.3 and (
-        weights_filtered_and_masked[1] < 0.05 or
-        weights_filtered_and_masked[1] - starting_weights_filtered_and_masked[1] < -0.25)  # type: ignore
+        net = Net(settings).to(settings.device)
+
+    dataset = ImageDataset(
+        num_timesteps_each_image=20,
+        num_timesteps_flash=20,
+        num_switches=5,
+        switch_probability=0.25
+    )
+    test_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
+
+    total_correct = 0
+    total = 0
+    for batch, labels in test_dataloader:
+        batch = batch.permute(1, 0, 2)
+        for timestep_data in batch:
+            net.process_data_single_timestep(timestep_data)
+
+        layer_activations = net.layer_activations()
+        internal_state = torch.concat(layer_activations, dim=1)
+
+        predictions = decoder.forward(internal_state, labels)
+        num_correct = torch.sum(predictions == labels).item()
+        total_correct += num_correct
+        total += len(labels)
+
+    pass_rate = total_correct / total
 
     message = f"""---------------------------------
-    starting weights: {starting_weights_filtered_and_masked}
-    ending weights: {weights_filtered_and_masked}
-    is_pass: {is_pass}
+    pass_rate: {pass_rate}
     ---------------------------------
     """
     running_log.write(message)
     running_log.flush()
     logging.info(message)
 
-    return is_pass
+    return pass_rate
 
 
 if __name__ == "__main__":
@@ -191,7 +208,7 @@ if __name__ == "__main__":
         "method": "bayes",
         "metric": {"goal": "maximize", "name": "pass_rate"},
         "parameters": {
-            "layer_sizes": {"values": [[2, 5], [2, 10, 10], [2, 10, 10, 10]]},
+            "layer_sizes": {"values": [[20, 20, 20, 20], [40, 40, 40, 40], [60, 60, 60, 60], [100, 100, 100, 100]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
             "percentage_inhibitory": {"min": 30, "max": 60},
