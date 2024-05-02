@@ -56,4 +56,4 @@ class ImageDataset(Dataset):
 
         # tensor is of shape (batch_size, num_timesteps), but we want to convert to (batch_size, num_timesteps, 1)
         out = torch.tensor(out, dtype=torch.float)
-        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.float)
+        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.long)

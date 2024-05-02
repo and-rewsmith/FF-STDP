@@ -20,42 +20,62 @@ from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
+DECODER_EPOCHS_PER_TRIAL = 10
 BATCH_SIZE = 256
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_size: int, output_size: int):
+    def __init__(self, input_size: int, num_switches: int, num_classes: int):
         super().__init__()
-        self.fc = nn.Linear(input_size, output_size)
+        self.fc = nn.Linear(input_size, num_switches * num_classes)
+        self.num_switches = num_switches
+        self.num_classes = num_classes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc(x)
+        # x: (batch_size, input_size)
+        x = self.fc(x)
+        # x: (batch_size, num_switches * num_classes)
+        x = x.view(-1, self.num_switches, self.num_classes)
+        # x: (batch_size, num_switches, num_classes)
+        return torch.softmax(x, dim=-1)
+        # return: (batch_size, num_switches, num_classes)
 
-    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, num_epochs: int = 10):
+    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
 
-        for _epoch in range(num_epochs):
+        for _ in range(num_epochs):
             optimizer.zero_grad()
             outputs = self.forward(internal_state)
+            # outputs: (batch_size, num_switches, num_classes)
+
+            # Reshape labels to match the output shape
+            labels = labels.view(-1, self.num_switches)
+            # labels: (batch_size, num_switches)
+
+            # Flatten outputs and labels for the loss calculation
+            outputs = outputs.view(-1, self.num_classes)
+            # outputs: (batch_size * num_switches, num_classes)
+            labels = labels.view(-1)
+            # labels: (batch_size * num_switches,)
+
             loss = criterion(outputs, labels)
+            wandb.log({"loss": loss.item()})
+            # loss: scalar
+
             loss.backward()
-            print(outputs)
-            print(labels)
-            print(loss.item())
-            print()
             optimizer.step()
 
     def predict(self, internal_state: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
             outputs = self.forward(internal_state)
-            _, predicted = torch.max(outputs.data, 1)
+            # outputs: (batch_size, num_switches, num_classes)
+            _, predicted = torch.max(outputs, dim=-1)
+            # predicted: (batch_size, num_switches)
             return predicted
 
 
 def objective() -> None:
-    input()
-
     wandb.init(
         project="LPL-SNN-4",
         config={
@@ -115,6 +135,7 @@ def objective() -> None:
                 decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha,
                 tau_rise_epsilon, tau_fall_epsilon
             )
+            wandb.log({"image_predict_success": pass_rate})
             cum_pass_rate += pass_rate
 
         running_log.write(
@@ -176,15 +197,24 @@ def bench_specific_seed(running_log: TextIO,
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
-    decoder = Decoder(input_size=sum(layer_sizes), output_size=dataset.num_classes)
+    decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches, num_classes=dataset.num_classes)
 
     for batch, labels in tqdm(train_dataloader):
+        # batch: (num_timesteps, batch_size, data_size)
+        # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
+        # batch: (batch_size, num_timesteps, data_size)
         for timestep_data in batch:
+            # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
         layer_activations = net.layer_activations()
+        # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
         internal_state = torch.concat(layer_activations, dim=1)
+        # internal_state: (batch_size, sum(layer_sizes))
+
+        # Reshape labels to (batch_size, num_switches)
+        labels = labels.view(-1, dataset.num_switches)
 
         decoder.train(internal_state, labels)
 
@@ -201,17 +231,25 @@ def bench_specific_seed(running_log: TextIO,
     total_correct = 0
     total = 0
     for batch, labels in tqdm(test_dataloader):
+        # batch: (num_timesteps, batch_size, data_size)
+        # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
+        # batch: (batch_size, num_timesteps, data_size)
         for timestep_data in batch:
+            # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
         layer_activations = net.layer_activations()
+        # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
         internal_state = torch.concat(layer_activations, dim=1)
+        # internal_state: (batch_size, sum(layer_sizes))
 
         predictions = decoder.predict(internal_state)
+        # predictions: (batch_size, num_switches)
+
         num_correct = torch.sum(predictions == labels).item()
         total_correct += num_correct
-        total += len(labels)
+        total += labels.numel()
 
     pass_rate = total_correct / total
 
@@ -259,5 +297,5 @@ if __name__ == "__main__":
         },
     }
 
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-2")
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
     wandb.agent(sweep_id, function=objective)
