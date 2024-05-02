@@ -16,3 +16,4 @@ generated_artifacts/*
 wandb/
 
 output/
+baseline.prof

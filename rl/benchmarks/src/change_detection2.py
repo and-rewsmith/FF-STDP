@@ -18,8 +18,8 @@ from rl.benchmarks.src.change_detection_framework2 import ChangeDetectionBasic
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.init")
 
 ACTION_DIM = 2
-ACTOR_LR = 1e-6 * 5
-CRITIC_LR = 1e-6 * 5
+ACTOR_LR = .00001
+CRITIC_LR = .00001
 
 HIDDEN_LAYER_SIZE = 256
 LAST_LAYER_SIZE = 32
@@ -30,7 +30,7 @@ ENCODE_SPIKE_TRAINS = False
 
 GAMMA = 0.99
 
-OPTIMAL_ACTION_PROB = 0.5
+OPTIMAL_ACTION_PROB = 1
 
 DEVICE = "mps"
 
@@ -86,7 +86,7 @@ def main():
 
     # Create the LPL Network
     settings = Settings(
-        layer_sizes=[500, 500, 500, 500],
+        layer_sizes=[75, 75, 75, 75],
         data_size=env.number_of_stimuli + 2,
         batch_size=BATCH_SIZE,
         learning_rate=0.01,
@@ -150,7 +150,8 @@ def main():
             dist = torch.distributions.Categorical(probs)
             action = dist.sample()
 
-            if episode % 2 == 0:
+            # if episode % 2 == 0:
+            if episode < 900:
                 optimal_action = torch.zeros(BATCH_SIZE, dtype=torch.long).to(device=DEVICE)
                 optimal_action.logical_or_(should_lick)
                 optimal_action.logical_and_(rewarded.logical_not())
@@ -166,11 +167,8 @@ def main():
             if step_count+1 % 10 == 0:
                 print(env.reward_state)
 
-            if episode % 2 == 1 and rewarded.any():
-                print("+++++++++++++++++++++++++++++++++ REWARD IN NON IMITATION LEARNING!")
-            #     print(reward)
-            #     print(rewarded)
-            #     input()
+            # if episode % 2 == 1 and rewarded.any():
+            #     print("+++++++++++++++++++++++++++++++++ REWARD IN NON IMITATION LEARNING!")
 
             # TODOPRE: we need to do something with this, maybe useful for stopped samples if we decide to stop them
             # original_observation = torch.where(done, observation, original_observation)
@@ -183,6 +181,7 @@ def main():
             next_network_state = torch.cat(net.layer_activations(), dim=1)
 
             next_value = critic(next_network_state)
+            wandb.log({"next_value": next_value.mean()})
             value = critic(network_state)
             done_int = 1 if done else 0
             td_error = reward + (GAMMA * next_value * (1 - done)) - value
@@ -193,7 +192,8 @@ def main():
             critic_optim.step()
             wandb.log({"critic_loss": critic_loss.mean()})
 
-            if episode % 2 == 0:
+            # if episode % 2 == 0:
+            if episode < 900:
                 # print(f"optimal action: {should_lick[0]}, episode failed: {episode_failed[0]}")
                 optimal_action = optimal_action & episode_failed
                 non_optimal_action = ~optimal_action
@@ -224,5 +224,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    cProfile.run("main()", "baseline.prof")
+    main()
+    # cProfile.run("main()", "baseline.prof")
