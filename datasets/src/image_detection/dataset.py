@@ -14,10 +14,11 @@ class ImageDataset(Dataset):
                  num_switches: int,
                  switch_probability: float,
                  max_samples: int = 10000) -> None:
+        self.num_classes = 10
         self.num_timesteps_each_image = num_timesteps_each_image
         self.num_timesteps_flash = num_timesteps_flash
         self.num_switches = num_switches
-        self.images = [num for num in range(0, 10)]
+        self.images = [num for num in range(0, self.num_classes)]
         self.switch_probability = switch_probability
         self.len = max_samples
 
@@ -33,7 +34,7 @@ class ImageDataset(Dataset):
                                torch.Tensor]) -> torch.Tensor:
         initial_image_index = random.randint(0, len(self.images)-1)
         switch_image_index = -1
-        while switch_image_index == -1 and initial_image_index == switch_image_index:
+        while switch_image_index == -1 or initial_image_index == switch_image_index:
             switch_image_index = random.randint(0, len(self.images)-1)
 
         out = []
@@ -55,4 +56,4 @@ class ImageDataset(Dataset):
 
         # tensor is of shape (batch_size, num_timesteps), but we want to convert to (batch_size, num_timesteps, 1)
         out = torch.tensor(out, dtype=torch.float)
-        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.long)
+        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.float)

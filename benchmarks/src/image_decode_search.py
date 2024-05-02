@@ -4,11 +4,13 @@ import time
 from typing import Any, TextIO
 
 import pandas as pd
+from tqdm import tqdm
 import wandb
 import torch
 from torch.utils.data import DataLoader
-from datasets.src.image_detection.dataset import ImageDataset
+from torch import nn
 
+from datasets.src.image_detection.dataset import ImageDataset
 from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
@@ -21,7 +23,39 @@ from model.src.visualizer import NetworkVisualizer
 BATCH_SIZE = 256
 
 
+class Decoder(nn.Module):
+    def __init__(self, input_size: int, output_size: int):
+        super().__init__()
+        self.fc = nn.Linear(input_size, output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fc(x)
+
+    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, num_epochs: int = 10):
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+
+        for _epoch in range(num_epochs):
+            optimizer.zero_grad()
+            outputs = self.forward(internal_state)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            print(outputs)
+            print(labels)
+            print(loss.item())
+            print()
+            optimizer.step()
+
+    def predict(self, internal_state: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            outputs = self.forward(internal_state)
+            _, predicted = torch.max(outputs.data, 1)
+            return predicted
+
+
 def objective() -> None:
+    input()
+
     wandb.init(
         project="LPL-SNN-4",
         config={
@@ -82,7 +116,6 @@ def objective() -> None:
                 tau_rise_epsilon, tau_fall_epsilon
             )
             cum_pass_rate += pass_rate
-            total_count += 1
 
         running_log.write(
             run_settings + f"\average_image_predict_success: {cum_pass_rate / num_seeds_bench}\n\n======================================\
@@ -107,13 +140,13 @@ def bench_specific_seed(running_log: TextIO,
                         tau_rise_alpha: float,
                         tau_fall_alpha: float,
                         tau_rise_epsilon: float,
-                        tau_fall_epsilon: float) -> bool:
+                        tau_fall_epsilon: float) -> float:
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
     settings = Settings(
         layer_sizes=layer_sizes,
-        data_size=2,
+        data_size=1,
         batch_size=BATCH_SIZE,
         learning_rate=learning_rate,
         epochs=10,
@@ -143,9 +176,9 @@ def bench_specific_seed(running_log: TextIO,
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
-    decoder = Decoder()
+    decoder = Decoder(input_size=sum(layer_sizes), output_size=dataset.num_classes)
 
-    for batch, labels in train_dataloader:
+    for batch, labels in tqdm(train_dataloader):
         batch = batch.permute(1, 0, 2)
         for timestep_data in batch:
             net.process_data_single_timestep(timestep_data)
@@ -167,7 +200,7 @@ def bench_specific_seed(running_log: TextIO,
 
     total_correct = 0
     total = 0
-    for batch, labels in test_dataloader:
+    for batch, labels in tqdm(test_dataloader):
         batch = batch.permute(1, 0, 2)
         for timestep_data in batch:
             net.process_data_single_timestep(timestep_data)
@@ -175,7 +208,7 @@ def bench_specific_seed(running_log: TextIO,
         layer_activations = net.layer_activations()
         internal_state = torch.concat(layer_activations, dim=1)
 
-        predictions = decoder.forward(internal_state, labels)
+        predictions = decoder.predict(internal_state)
         num_correct = torch.sum(predictions == labels).item()
         total_correct += num_correct
         total += len(labels)
