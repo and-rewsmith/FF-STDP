@@ -374,7 +374,8 @@ class Layer(nn.Module):
             {f"layer_{self.layer_settings.layer_id}_exc_mem": 1})
         # try:
         #     wandb.log(
-        #         {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
+        #         {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()},
+        # step=self.forward_counter)
         #     wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
         #               step=self.forward_counter)
         # except IndexError:
