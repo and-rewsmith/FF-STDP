@@ -14,3 +14,5 @@ wandb/
 output/
 
 *.log
+
+*.png
