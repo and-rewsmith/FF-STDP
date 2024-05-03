@@ -4,6 +4,7 @@ import string
 import time
 from typing import Any, List, TextIO
 
+from profilehooks import profile
 import pandas as pd
 from tqdm import tqdm
 import wandb
@@ -117,6 +118,8 @@ def objective() -> None:
     tau_fall_alpha = wandb.config.tau_fall_alpha
     tau_rise_epsilon = wandb.config.tau_rise_epsilon
     tau_fall_epsilon = wandb.config.tau_fall_epsilon
+    threshold_scale = wandb.config.threshold_scale
+    threshold_decay = wandb.config.threshold_decay
 
     run_settings = f"""
     running with:
@@ -135,6 +138,8 @@ def objective() -> None:
     tau_fall_alpha: {tau_fall_alpha},
     tau_rise_epsilon: {tau_rise_epsilon},
     tau_fall_epsilon: {tau_fall_epsilon},
+    threshold_scale: {threshold_scale},
+    threshold_decay: {threshold_decay},
     """
     logging.info(run_settings)
 
@@ -149,7 +154,7 @@ def objective() -> None:
                 layer_sizes, learning_rate, dt, percentage_inhibitory,
                 exc_to_inhib_conn_c, exc_to_inhib_conn_sigma_squared, layer_sparsity,
                 decay_beta, tau_mean, tau_var, tau_stdp, tau_rise_alpha, tau_fall_alpha,
-                tau_rise_epsilon, tau_fall_epsilon
+                tau_rise_epsilon, tau_fall_epsilon, threshold_scale, threshold_decay
             )
             wandb.log({"image_predict_success": pass_rate})
             cum_pass_rate += pass_rate
@@ -162,6 +167,7 @@ def objective() -> None:
     wandb.log({"average_image_predict_success": cum_pass_rate / NUM_SEEDS_BENCH})
 
 
+@profile(stdout=False, filename='baseline.prof', skip=False)
 def bench_specific_seed(running_log: TextIO,
                         layer_sizes: list[int],
                         learning_rate: float,
@@ -177,7 +183,9 @@ def bench_specific_seed(running_log: TextIO,
                         tau_rise_alpha: float,
                         tau_fall_alpha: float,
                         tau_rise_epsilon: float,
-                        tau_fall_epsilon: float) -> float:
+                        tau_fall_epsilon: float,
+                        threshold_scale: float,
+                        threshold_decay: float) -> float:
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
@@ -207,6 +215,8 @@ def bench_specific_seed(running_log: TextIO,
         tau_fall_alpha=tau_fall_alpha,
         tau_rise_epsilon=tau_rise_epsilon,
         tau_fall_epsilon=tau_fall_epsilon,
+        threshold_scale=threshold_scale,
+        threshold_decay=threshold_decay,
         device=torch.device(DEVICE)
     )
 
@@ -227,7 +237,7 @@ def bench_specific_seed(running_log: TextIO,
         # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
         # batch: (batch_size, num_timesteps, data_size)
-        for timestep_data in batch:
+        for timestep_data in tqdm(batch, leave=False):
             # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
@@ -246,7 +256,8 @@ def bench_specific_seed(running_log: TextIO,
         num_switches=5,
         switch_probability=0.25,
         device=DEVICE,
-        max_samples=1024
+        # max_samples=1024
+        max_samples=64
     )
     test_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
@@ -257,7 +268,7 @@ def bench_specific_seed(running_log: TextIO,
         # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
         # batch: (batch_size, num_timesteps, data_size)
-        for timestep_data in batch:
+        for timestep_data in tqdm(batch, leave=False):
             # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
@@ -283,6 +294,7 @@ def bench_specific_seed(running_log: TextIO,
     running_log.flush()
     logging.info(message)
 
+    print("done profile!--------------------")
     return pass_rate
 
 
@@ -301,7 +313,7 @@ if __name__ == "__main__":
         "method": "bayes",
         "metric": {"goal": "maximize", "name": "average_image_predict_success"},
         "parameters": {
-            "layer_sizes": {"values": [[100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600], [1000, 1000, 1000, 1000]]},
+            "layer_sizes": {"values": [[75, 75, 75, 75], [100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
             "percentage_inhibitory": {"min": 10, "max": 60},
@@ -316,6 +328,8 @@ if __name__ == "__main__":
             "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
             "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
             "decay_beta": {"min": 0.8, "max": 0.95},
+            "threshold_scale": {"min": 1.0, "max": 1.5},
+            "threshold_decay": {"min": 0.9, "max": 1.0},
         },
     }
 
