@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from model.src import logging_util
-from model.src.constants import LEARNING_RATE
 from model.src.settings import Settings
 from model.src.network import Net
 
@@ -23,25 +22,12 @@ if __name__ == "__main__":
     logging_util.set_logging()
 
     settings = Settings(
-        layer_sizes=[2, 5],
+        layer_sizes=[2],
         data_size=2,
         batch_size=BATCH_SIZE,
         learning_rate=0.01,
         epochs=10,
         encode_spike_trains=ENCODE_SPIKE_TRAINS,
-        dt=.01,
-        percentage_inhibitory=50,
-        exc_to_inhib_conn_c=0.25,
-        exc_to_inhib_conn_sigma_squared=60,
-        layer_sparsity=0.9,
-        decay_beta=0.85,
-        tau_mean=1200,
-        tau_var=0.02,
-        tau_stdp=0.1,
-        tau_rise_alpha=0.005,
-        tau_fall_alpha=.05,
-        tau_rise_epsilon=0.002,
-        tau_fall_epsilon=0.02,
         device=torch.device("cpu")
     )
 

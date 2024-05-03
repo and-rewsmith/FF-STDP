@@ -141,12 +141,8 @@ class Layer(nn.Module):
                                               sparsity=layer_settings.layer_sparsity,
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
-        # TODOPRE: remove
-        if layer_settings.layer_id == 0:
-            self.inhibitory_mask_vec_ = inhibitory_mask_vec(layer_settings.size, 50).to(layer_settings.device)
-        else:
-            self.inhibitory_mask_vec_ = inhibitory_mask_vec(
-                layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
+        self.inhibitory_mask_vec_ = inhibitory_mask_vec(
+            layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
         ).float().to(layer_settings.device)
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
@@ -171,7 +167,7 @@ class Layer(nn.Module):
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
-            device=self.layer_settings.device, trace_shape=trace_shape)
+            device=self.layer_settings.device, trace_shape=trace_shape, tau_stdp=layer_settings.tau_stdp)
 
         self.forward_counter = 0
 
@@ -370,25 +366,26 @@ class Layer(nn.Module):
         inhibitory_spike = reduce_feature_dims_with_mask(
             spike, self.inhibitory_mask_vec)
 
-        wandb.log(
-            {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
-        try:
-            wandb.log(
-                {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
-            wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
-                      step=self.forward_counter)
-        except IndexError:
-            pass
-        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
-                  step=self.forward_counter)
-        wandb.log(
-            {
-                f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]},
-            step=self.forward_counter)
-        wandb.log(
-            {
-                f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]},
-            step=self.forward_counter)
+        # wandb.log(
+        #     {f"layer_{self.layer_settings.layer_id}_exc_mem": 1})
+        # try:
+        #     wandb.log(
+        #         {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()},
+        # step=self.forward_counter)
+        #     wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
+        #               step=self.forward_counter)
+        # except IndexError:
+        #     pass
+        # wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
+        #           step=self.forward_counter)
+        # wandb.log(
+        #     {
+        #         f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]},
+        #     step=self.forward_counter)
+        # wandb.log(
+        #     {
+        #         f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]},
+        #     step=self.forward_counter)
 
         # TODO: The below metrics are specific to the dataset so will eventually
         # need to be removed. For now we comment them out.
