@@ -7,7 +7,6 @@ from torch.utils.data import Dataset
 
 
 class ImageDataset(Dataset):
-
     def __init__(self,
                  num_timesteps_each_image: int,
                  num_switches: int,
@@ -37,8 +36,8 @@ class ImageDataset(Dataset):
         while switch_image_index == -1 or initial_image_index == switch_image_index:
             switch_image_index = random.randint(0, len(self.images)-1)
 
-        out = []
-        out_labels = []
+        out = []  # List to store image indices
+        out_labels = []  # List to store switch labels
         switch = False
         for i in range(self.num_switches):
             if switch:
@@ -51,6 +50,22 @@ class ImageDataset(Dataset):
             if not switch:
                 switch = random.random() < self.switch_probability
 
-        # tensor is of shape (batch_size, num_timesteps), but we want to convert to (batch_size, num_timesteps, 1)
-        out = torch.tensor(out, dtype=torch.float, device=self.device)
-        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.long, device=self.device)
+        # out: List of image indices
+        #   Dimensions: (num_switches * num_timesteps_each_image,)
+
+        # Convert out to a one-hot encoding of num_classes
+        out_one_hot = torch.zeros((len(out), self.num_classes), dtype=torch.float, device=self.device)
+        # out_one_hot: Tensor of shape (num_switches * num_timesteps_each_image, num_classes)
+        #   Dimensions: (num_switches * num_timesteps_each_image, num_classes)
+
+        out_one_hot[torch.arange(len(out), device=self.device), out] = 1
+        # out_one_hot: Tensor of shape (num_switches * num_timesteps_each_image, num_classes)
+        #   Dimensions: (num_switches * num_timesteps_each_image, num_classes)
+
+        # out_labels: List of switch labels
+        #   Dimensions: (num_switches,)
+
+        return out_one_hot, torch.tensor(out_labels, dtype=torch.long, device=self.device)
+        # Returns:
+        #   - out_one_hot: Tensor of shape (num_switches * num_timesteps_each_image, num_classes)
+        #   - out_labels: Tensor of shape (num_switches,)

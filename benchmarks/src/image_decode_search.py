@@ -25,7 +25,7 @@ from model.src.visualizer import NetworkVisualizer
 BATCH_SIZE = 64
 DECODER_EPOCHS_PER_TRIAL = 25
 DECODER_LR = 0.0005
-DEVICE = "cpu"
+DEVICE = "mps"
 NUM_SEEDS_BENCH = 2
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
 RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
