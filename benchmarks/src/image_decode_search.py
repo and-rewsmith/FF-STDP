@@ -24,7 +24,7 @@ from model.src.visualizer import NetworkVisualizer
 
 # TODOPRE: Think about trade off between high and 1 batch size
 BATCH_SIZE = 64
-DECODER_EPOCHS_PER_TRIAL = 25
+DECODER_EPOCHS_PER_TRIAL = 50
 DECODER_LR = 0.0005
 DEVICE = "mps"
 NUM_SEEDS_BENCH = 2
@@ -256,8 +256,7 @@ def bench_specific_seed(running_log: TextIO,
         num_switches=5,
         switch_probability=0.25,
         device=DEVICE,
-        # max_samples=1024
-        max_samples=64
+        max_samples=1024
     )
     test_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
