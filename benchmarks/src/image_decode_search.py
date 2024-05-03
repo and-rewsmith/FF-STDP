@@ -2,7 +2,7 @@ import logging
 import random
 import string
 import time
-from typing import Any, TextIO
+from typing import Any, List, TextIO
 
 import pandas as pd
 from tqdm import tqdm
@@ -21,9 +21,10 @@ from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
-DECODER_EPOCHS_PER_TRIAL = 20
-BATCH_SIZE = 512
-DECODER_LR = 0.0001
+# TODOPRE: Think about trade off between high and 1 batch size
+BATCH_SIZE = 64
+DECODER_EPOCHS_PER_TRIAL = 25
+DECODER_LR = 0.0005
 DEVICE = "cpu"
 NUM_SEEDS_BENCH = 2
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
@@ -31,16 +32,25 @@ RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_size: int, num_switches: int, num_classes: int, device: str):
+    def __init__(self, input_size: int, num_switches: int, num_classes: int, device: str, hidden_sizes: List[int]):
         super().__init__()
-        self.fc = nn.Linear(input_size, num_switches * num_classes)
         self.num_switches = num_switches
         self.num_classes = num_classes
+
+        layers = []
+        prev_size = input_size
+        for hidden_size in hidden_sizes:
+            layers.append(nn.Linear(prev_size, hidden_size))
+            layers.append(nn.ReLU())
+            prev_size = hidden_size
+        layers.append(nn.Linear(prev_size, num_switches * num_classes))
+        self.layers = nn.Sequential(*layers)
+
         self.to(device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch_size, input_size)
-        x = self.fc(x)
+        x = self.layers(x)
         # x: (batch_size, num_switches * num_classes)
         x = x.view(-1, self.num_switches, self.num_classes)
         # x: (batch_size, num_switches, num_classes)
@@ -145,11 +155,11 @@ def objective() -> None:
             cum_pass_rate += pass_rate
 
         running_log.write(
-            run_settings + f"\average_image_predict_success: {cum_pass_rate / num_seeds_bench}\n\n======================================\
+            run_settings + f"\average_image_predict_success: {cum_pass_rate / NUM_SEEDS_BENCH}\n\n======================================\
                 =========================================")
         running_log.flush()
 
-    wandb.log({"average_image_predict_success": cum_pass_rate / num_seeds_bench})
+    wandb.log({"average_image_predict_success": cum_pass_rate / NUM_SEEDS_BENCH})
 
 
 def bench_specific_seed(running_log: TextIO,
@@ -171,9 +181,15 @@ def bench_specific_seed(running_log: TextIO,
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
 
+    dataset = ImageDataset(
+        num_timesteps_each_image=20,
+        num_switches=5,
+        switch_probability=0.25,
+        device=DEVICE
+    )
     settings = Settings(
         layer_sizes=layer_sizes,
-        data_size=1,
+        data_size=dataset.num_classes,
         batch_size=BATCH_SIZE,
         learning_rate=learning_rate,
         epochs=10,
@@ -196,7 +212,6 @@ def bench_specific_seed(running_log: TextIO,
 
     dataset = ImageDataset(
         num_timesteps_each_image=20,
-        num_timesteps_flash=20,
         num_switches=5,
         switch_probability=0.25,
         device=DEVICE
@@ -205,7 +220,7 @@ def bench_specific_seed(running_log: TextIO,
 
     net = Net(settings).to(settings.device)
     decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches,
-                      num_classes=dataset.num_classes, device=DEVICE)
+                      num_classes=dataset.num_classes, device=DEVICE, hidden_sizes=[100, 50, 20])
 
     for batch, labels in tqdm(train_dataloader):
         # batch: (num_timesteps, batch_size, data_size)
@@ -226,14 +241,12 @@ def bench_specific_seed(running_log: TextIO,
 
         decoder.train(internal_state, labels)
 
-        net = Net(settings).to(settings.device)
-
     dataset = ImageDataset(
         num_timesteps_each_image=20,
-        num_timesteps_flash=20,
         num_switches=5,
         switch_probability=0.25,
-        device=DEVICE
+        device=DEVICE,
+        max_samples=1024
     )
     test_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
@@ -286,9 +299,9 @@ if __name__ == "__main__":
 
     sweep_configuration = {
         "method": "bayes",
-        "metric": {"goal": "maximize", "name": "pass_rate"},
+        "metric": {"goal": "maximize", "name": "average_image_predict_success"},
         "parameters": {
-            "layer_sizes": {"values": [[20, 20, 20, 20], [40, 40, 40, 40], [60, 60, 60, 60], [100, 100, 100, 100]]},
+            "layer_sizes": {"values": [[100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600], [1000, 1000, 1000, 1000]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
             "percentage_inhibitory": {"min": 10, "max": 60},

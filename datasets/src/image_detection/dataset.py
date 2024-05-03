@@ -10,14 +10,12 @@ class ImageDataset(Dataset):
 
     def __init__(self,
                  num_timesteps_each_image: int,
-                 num_timesteps_flash: int,
                  num_switches: int,
                  switch_probability: float,
                  device: str,
-                 max_samples: int = 1024 * 10) -> None:
+                 max_samples: int = 1024 * 6) -> None:
         self.num_classes = 10
         self.num_timesteps_each_image = num_timesteps_each_image
-        self.num_timesteps_flash = num_timesteps_flash
         self.num_switches = num_switches
         self.images = [num for num in range(0, self.num_classes)]
         self.switch_probability = switch_probability
@@ -49,9 +47,6 @@ class ImageDataset(Dataset):
             else:
                 out.extend([initial_image_index] * self.num_timesteps_each_image)
                 out_labels.append(initial_image_index)
-
-            if i != self.num_switches - 1:
-                out.extend([switch_image_index] * self.num_timesteps_flash)
 
             if not switch:
                 switch = random.random() < self.switch_probability
