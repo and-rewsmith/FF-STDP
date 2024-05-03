@@ -1,5 +1,6 @@
 import logging
 import random
+import string
 import time
 from typing import Any, TextIO
 
@@ -20,16 +21,22 @@ from model.src.network import Net
 from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
-DECODER_EPOCHS_PER_TRIAL = 10
-BATCH_SIZE = 256
+DECODER_EPOCHS_PER_TRIAL = 20
+BATCH_SIZE = 512
+DECODER_LR = 0.0001
+DEVICE = "cpu"
+NUM_SEEDS_BENCH = 2
+datetime_str = time.strftime("%Y%m%d-%H%M%S")
+RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_size: int, num_switches: int, num_classes: int):
+    def __init__(self, input_size: int, num_switches: int, num_classes: int, device: str):
         super().__init__()
         self.fc = nn.Linear(input_size, num_switches * num_classes)
         self.num_switches = num_switches
         self.num_classes = num_classes
+        self.to(device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch_size, input_size)
@@ -42,7 +49,7 @@ class Decoder(nn.Module):
 
     def train(self, internal_state: torch.Tensor, labels: torch.Tensor, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
         criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
 
         for _ in range(num_epochs):
             optimizer.zero_grad()
@@ -121,13 +128,12 @@ def objective() -> None:
     """
     logging.info(run_settings)
 
-    with open("running_log.log", "a") as running_log:
+    with open(RUNNING_LOG_FILENAME, "a") as running_log:
         running_log.write(f"{run_settings}")
         running_log.flush()
 
         cum_pass_rate = 0
-        num_seeds_bench = 10
-        for _ in range(num_seeds_bench):
+        for _ in range(NUM_SEEDS_BENCH):
             pass_rate = bench_specific_seed(
                 running_log,
                 layer_sizes, learning_rate, dt, percentage_inhibitory,
@@ -185,19 +191,21 @@ def bench_specific_seed(running_log: TextIO,
         tau_fall_alpha=tau_fall_alpha,
         tau_rise_epsilon=tau_rise_epsilon,
         tau_fall_epsilon=tau_fall_epsilon,
-        device=torch.device("cpu")
+        device=torch.device(DEVICE)
     )
 
     dataset = ImageDataset(
         num_timesteps_each_image=20,
         num_timesteps_flash=20,
         num_switches=5,
-        switch_probability=0.25
+        switch_probability=0.25,
+        device=DEVICE
     )
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
-    decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches, num_classes=dataset.num_classes)
+    decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches,
+                      num_classes=dataset.num_classes, device=DEVICE)
 
     for batch, labels in tqdm(train_dataloader):
         # batch: (num_timesteps, batch_size, data_size)
@@ -224,7 +232,8 @@ def bench_specific_seed(running_log: TextIO,
         num_timesteps_each_image=20,
         num_timesteps_flash=20,
         num_switches=5,
-        switch_probability=0.25
+        switch_probability=0.25,
+        device=DEVICE
     )
     test_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
@@ -269,7 +278,7 @@ if __name__ == "__main__":
     torch.set_printoptions(precision=10, sci_mode=False)
     logging_util.set_logging()
 
-    running_log = open("running_log.log", "w")
+    running_log = open(RUNNING_LOG_FILENAME, "w")
     message = f"Sweep logs. Current datetime: {time.ctime()}\n"
     running_log.write(message)
     running_log.close()
@@ -282,7 +291,7 @@ if __name__ == "__main__":
             "layer_sizes": {"values": [[20, 20, 20, 20], [40, 40, 40, 40], [60, 60, 60, 60], [100, 100, 100, 100]]},
             "learning_rate": {"min": 0.0001, "max": 0.01},
             "dt": {"min": 0.001, "max": 1.0},
-            "percentage_inhibitory": {"min": 30, "max": 60},
+            "percentage_inhibitory": {"min": 10, "max": 60},
             "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
             "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
             "layer_sparsity": {"min": 0.1, "max": 0.9},
@@ -293,7 +302,7 @@ if __name__ == "__main__":
             "tau_fall_alpha": {"min": 0.005, "max": 0.05},
             "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
             "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
-            "decay_beta": {"min": 0.8, "max": 0.9},
+            "decay_beta": {"min": 0.8, "max": 0.95},
         },
     }
 

@@ -17,3 +17,5 @@ wandb/
 
 output/
 baseline.prof
+
+running_log*

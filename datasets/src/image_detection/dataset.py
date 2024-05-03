@@ -13,7 +13,8 @@ class ImageDataset(Dataset):
                  num_timesteps_flash: int,
                  num_switches: int,
                  switch_probability: float,
-                 max_samples: int = 10000) -> None:
+                 device: str,
+                 max_samples: int = 1024 * 10) -> None:
         self.num_classes = 10
         self.num_timesteps_each_image = num_timesteps_each_image
         self.num_timesteps_flash = num_timesteps_flash
@@ -21,6 +22,7 @@ class ImageDataset(Dataset):
         self.images = [num for num in range(0, self.num_classes)]
         self.switch_probability = switch_probability
         self.len = max_samples
+        self.device = device
 
     def __len__(self) -> int:
         """
@@ -55,5 +57,5 @@ class ImageDataset(Dataset):
                 switch = random.random() < self.switch_probability
 
         # tensor is of shape (batch_size, num_timesteps), but we want to convert to (batch_size, num_timesteps, 1)
-        out = torch.tensor(out, dtype=torch.float)
-        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.long)
+        out = torch.tensor(out, dtype=torch.float, device=self.device)
+        return out.unsqueeze(-1), torch.tensor(out_labels, dtype=torch.long, device=self.device)
