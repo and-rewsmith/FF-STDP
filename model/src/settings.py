@@ -26,7 +26,7 @@ class Settings:
                  tau_fall_alpha: float = TAU_FALL_ALPHA,
                  tau_rise_epsilon: float = TAU_RISE_EPSILON,
                  tau_fall_epsilon: float = TAU_FALL_EPSILON,
-                 device: torch.device = "cpu") -> None:
+                 device: torch.device = torch.device("cpu")) -> None:
         self.layer_sizes = layer_sizes
         self.data_size = data_size
         self.batch_size = batch_size

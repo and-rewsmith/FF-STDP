@@ -7,8 +7,8 @@ import torch.nn as nn
 class SpikeOperator():
     @staticmethod
     def forward(mem: torch.Tensor, threshold: torch.Tensor) -> torch.Tensor:
-        spk = torch.where(mem > threshold, torch.as_tensor(
-            1.0, device=mem.device), torch.as_tensor(0.0, device=mem.device))
+        spk = torch.where(mem > threshold, torch.as_tensor(1.0, device=mem.device),
+                          torch.as_tensor(0.0, device=mem.device))
         return spk
 
 
@@ -33,26 +33,25 @@ class LIF(nn.Module):
         3. Reset the membrane potential if spiked
         """
         super(LIF, self).__init__()
+        assert 0 <= beta <= 1, "beta must be in the range [0, 1]"
+        assert threshold_scale >= 1, "threshold_scale must be greater than or equal to 1"
+        assert 0 <= threshold_decay <= 1, "threshold_decay must be in the range [0, 1]"
 
         self.beta = beta
         self.threshold = threshold
         self.threshold_scale = threshold_scale
         self.threshold_decay = threshold_decay
-
         self.spike_op = SpikeOperator.forward
 
-        self.mem: Optional[torch.Tensor] = None
-        self.prereset_mem: Optional[torch.Tensor] = None
-        self.adaptive_threshold: Optional[torch.Tensor] = None
+        self.mem: torch.Tensor
+        self.prereset_mem: torch.Tensor
+        self.adaptive_threshold: torch.Tensor
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
-        if self.mem == None:  # noqa
+        if not hasattr(self, 'mem'):
             self.mem = torch.zeros_like(current)
             self.prereset_mem = torch.zeros_like(current)
             self.adaptive_threshold = torch.full_like(current, self.threshold)
-
-        assert self.mem is not None
-        assert self.adaptive_threshold is not None
 
         # Update membrane potential: decay and add current
         self.mem = self.beta * self.mem + current
@@ -63,7 +62,7 @@ class LIF(nn.Module):
 
         # Reset the membrane potential if spiked
         reset = spk * self.adaptive_threshold
-        self.mem -= reset  # type: ignore [operator]
+        self.mem -= reset
 
         # Update adaptive threshold
         self.adaptive_threshold = torch.where(spk.bool(), self.adaptive_threshold * self.threshold_scale,
