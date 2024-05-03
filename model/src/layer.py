@@ -175,7 +175,10 @@ class Layer(nn.Module):
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
-            device=self.layer_settings.device, trace_shape=trace_shape, tau_stdp=layer_settings.tau_stdp)
+            device=self.layer_settings.device,
+            trace_shape=trace_shape,
+            dt=layer_settings.dt,
+            tau_stdp=layer_settings.tau_stdp)
 
         self.forward_counter = 0
 
@@ -366,9 +369,9 @@ class Layer(nn.Module):
             1)
         first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
         first_term_epsilon = filter_group.first_term_epsilon.apply(
-            first_term_no_filter, self.layer_settings.dt)
+            first_term_no_filter)
         first_term_alpha = filter_group.first_term_alpha.apply(
-            first_term_epsilon, self.layer_settings.dt)
+            first_term_epsilon)
 
         # assert shapes
         assert f_prime_u_i.shape == (
@@ -402,7 +405,7 @@ class Layer(nn.Module):
         second_term_no_filter = second_term_no_filter.unsqueeze(
             2).expand(-1, -1, from_layer_size)
         second_term_alpha = filter_group.second_term_alpha.apply(
-            second_term_no_filter, self.layer_settings.dt)
+            second_term_no_filter)
 
         # assert shapes
         assert second_term_deviation.shape == (
@@ -471,7 +474,7 @@ class Layer(nn.Module):
             self.layer_settings.size,
             from_layer.layer_settings.size)
 
-        self.inhibitory_trace.apply(spike, self.layer_settings.dt)
+        self.inhibitory_trace.apply(spike)
 
         x_i = self.inhibitory_trace.tracked_value().unsqueeze(
             2).expand(-1, -1, from_layer.layer_settings.size)
