@@ -16,8 +16,8 @@ DELTA = 1e-3
 # Zenke's paper uses a kappa of 10 Hz
 KAPPA = 10
 
-THRESHOLD_SCALE = 1.1
-THRESHOLD_DECAY = 0.99
+THRESHOLD_SCALE = 1
+THRESHOLD_DECAY = 1
 
 # Zenke's paper uses a tau_mean of 600s
 TAU_MEAN = 600
