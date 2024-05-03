@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
 from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
 from model.src import logging_util
-from model.src.constants import LEARNING_RATE
 from model.src.settings import Settings
 from model.src.network import Net
 
@@ -32,17 +31,17 @@ if __name__ == "__main__":
         device=torch.device("cpu")
     )
 
-    # wandb.init(
-    #     # set the wandb project where this run will be logged
-    #     project="LPL-SNN-2",
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="LPL-SNN-2",
 
-    #     # track hyperparameters and run metadata
-    #     config={
-    #         "architecture": "initial",
-    #         "dataset": "point-cloud",
-    #         "settings": settings,
-    #     }
-    # )
+        # track hyperparameters and run metadata
+        config={
+            "architecture": "initial",
+            "dataset": "point-cloud",
+            "settings": settings,
+        }
+    )
 
     try:
         train_dataframe = pd.read_csv(TRAIN_DATA_PATH)
