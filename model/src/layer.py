@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import wandb
 
-from model.src.constants import DECAY_BETA, DELTA, \
+from model.src.constants import DELTA, \
     KAPPA, LAMBDA_HEBBIAN, THETA_REST, XI, ZENKE_BETA
 from model.src.logging_util import ExcitatorySynapticWeightEquation
 from model.src.settings import LayerSettings
@@ -145,12 +145,12 @@ class Layer(nn.Module):
                                               sparsity=layer_settings.layer_sparsity,
                                               synaptic_update_type=SynapticUpdateType.RECURRENT)
 
-        # TODOPRE: remove
-        if layer_settings.layer_id == 0:
+        if layer_settings.layer_id == 0 and layer_settings.size == 2:
             self.inhibitory_mask_vec_ = inhibitory_mask_vec(layer_settings.size, 50).to(layer_settings.device)
         else:
             self.inhibitory_mask_vec_ = inhibitory_mask_vec(
                 layer_settings.size, layer_settings.percentage_inhibitory).to(layer_settings.device)
+
         self.excitatory_mask_vec_ = (~self.inhibitory_mask_vec_.bool()).int(
         ).float().to(layer_settings.device)
         self.register_buffer("inhibitory_mask_vec", self.inhibitory_mask_vec_)
@@ -175,7 +175,7 @@ class Layer(nn.Module):
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
-            device=self.layer_settings.device, trace_shape=trace_shape)
+            device=self.layer_settings.device, trace_shape=trace_shape, tau_stdp=layer_settings.tau_stdp)
 
         self.forward_counter = 0
 
@@ -314,114 +314,12 @@ class Layer(nn.Module):
         spk = self.lif.forward(total_current)
         self.forward_counter += 1
 
-        logging.debug("")
-        logging.debug(f"current: {str(total_current)}")
-        logging.debug(f"mem: {str(self.lif.mem())}")
-        logging.debug(f"spk: {str(spk)}")
-
         return spk
 
-    # TODO: this will need to be removed or refactored once we move to more
-    # complex network topologies
+    # TODO: we would need to rethink what to log here
     def __log_equation_context(self, excitatory_equation: ExcitatorySynapticWeightEquation, dw_dt: torch.Tensor,
                                spike: torch.Tensor, mem: torch.Tensor) -> None:
-        logging.debug("")
-        logging.debug("first term stats:")
-        logging.debug(
-            f"prev layer most recent spike: {excitatory_equation.first_term.prev_layer_most_recent_spike}")
-        logging.debug(
-            f"zenke beta * abs: {ZENKE_BETA * abs(mem - THETA_REST)}")
-        logging.debug(
-            f"f prime u i: {excitatory_equation.first_term.f_prime_u_i}")
-        logging.debug(
-            f"first term no filter: {excitatory_equation.first_term.no_filter}")
-        logging.debug(
-            f"first term epsilon: {excitatory_equation.first_term.epsilon_filter}")
-        logging.debug(
-            f"first term alpha filter: {excitatory_equation.first_term.alpha_filter}")
-        logging.debug("")
-        logging.debug("second term stats:")
-        logging.debug(
-            f"second_term_prediction_error: {excitatory_equation.second_term.prediction_error}")
-        logging.debug(
-            f"second_term_deviation_scale: {excitatory_equation.second_term.deviation_scale}")
-        logging.debug(
-            f"second_term_deviation: {excitatory_equation.second_term.deviation}")
-        logging.debug(
-            f"second term no filter: {excitatory_equation.second_term.no_filter}")
-        logging.debug(
-            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
-        logging.debug("")
-        logging.debug(
-            f"first term alpha: {excitatory_equation.first_term.alpha_filter}")
-        logging.debug(
-            f"second term alpha: {excitatory_equation.second_term.alpha_filter}")
-        logging.debug("")
-        logging.debug(f"dw_dt shape: {dw_dt.shape}")
-        logging.debug(f"dw_dt: {dw_dt}")
-        logging.debug(
-            f"forward weights shape: {self.forward_weights.weight().shape}")
-        logging.debug(f"forward weights: {self.forward_weights.weight()}")
-
-        def reduce_feature_dims_with_mask(
-                tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            return tensor[mask.unsqueeze(0).expand(
-                self.layer_settings.batch_size, -1).bool()]
-
-        # NOTE: if we want to log just one data point index the batch dim into
-        # these tensors
-        excitatory_mem = reduce_feature_dims_with_mask(
-            mem, self.excitatory_mask_vec)
-        inhibitory_mem = reduce_feature_dims_with_mask(
-            mem, self.inhibitory_mask_vec)
-        excitatory_spike = reduce_feature_dims_with_mask(
-            spike, self.excitatory_mask_vec)
-        inhibitory_spike = reduce_feature_dims_with_mask(
-            spike, self.inhibitory_mask_vec)
-
-        wandb.log(
-            {f"layer_{self.layer_settings.layer_id}_exc_mem": excitatory_mem[0].mean()}, step=self.forward_counter)
-        try:
-            wandb.log(
-                {f"layer_{self.layer_settings.layer_id}_inh_mem": inhibitory_mem[0].mean()}, step=self.forward_counter)
-            wandb.log({f"layer_{self.layer_settings.layer_id}_inh_spike": inhibitory_spike[0].mean()},
-                      step=self.forward_counter)
-        except IndexError:
-            pass
-        wandb.log({f"layer_{self.layer_settings.layer_id}_exc_spike": excitatory_spike[0].mean()},
-                  step=self.forward_counter)
-        wandb.log(
-            {
-                f"layer_{self.layer_settings.layer_id}_data_point_0": self.data[0][0]},
-            step=self.forward_counter)
-        wandb.log(
-            {
-                f"layer_{self.layer_settings.layer_id}_data_point_1": self.data[0][1]},
-            step=self.forward_counter)
-
-        # TODO: The below metrics are specific to the dataset so will eventually
-        # need to be removed. For now we comment them out.
-        # if self.layer_settings.layer_id == 0:
-        #     # Log for a layer the weight from the first datapoint to the excitatory
-        #     # neuron. The key here is that we need to know what the excitatory
-        #     # neuron is in order to figure out how to index into the forward
-        #     # weights.
-        #     excitatory_masked_weight = self.excitatory_mask_vec.unsqueeze(1) \
-        #         .expand(-1, self.layer_settings.data_size) \
-        #         * self.forward_weights.weight()
-        #     # Identify rows that are not all zeros
-        #     non_zero_rows = excitatory_masked_weight.any(dim=1)
-        #     # Filter out rows that are all zeros
-        #     excitatory_masked_weight = excitatory_masked_weight[non_zero_rows]
-        #     assert excitatory_masked_weight.shape == (
-        #         self.layer_settings.size / 2, self.layer_settings.data_size)
-
-        #     wandb.log({f"layer_{self.layer_settings.layer_id}_exc_weight_0": excitatory_masked_weight[0][0]},
-        #               step=self.forward_counter)
-        #     wandb.log(
-        #         {f"layer_{self.layer_settings.layer_id}_exc_weight_1":
-        #             excitatory_masked_weight[0][1]},
-        #         step=self.forward_counter)
+        pass
 
     def train_excitatory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     filter_group: ExcitatorySynapseFilterGroup, from_layer: Optional[Self],
@@ -451,10 +349,7 @@ class Layer(nn.Module):
         # update.
         from_layer_size = from_layer.layer_settings.size if from_layer is not None else self.layer_settings.data_size
 
-        if from_layer is None:
-            mask = torch.ones(self.layer_settings.size, self.layer_settings.data_size).to(
-                device=self.layer_settings.device)
-        else:
+        if from_layer is not None:
             # flip the mask as this is for excitatory connections
             mask = (~from_layer.inhibitory_mask_vec.bool()).int()
             # expand the mask across the synaptic weight matrix
@@ -520,7 +415,10 @@ class Layer(nn.Module):
         # update weights
         dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
                                                      second_term_alpha)
-        dw_dt = dw_dt.sum(0) / dw_dt.shape[0] * mask
+
+        dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+        if from_layer is not None:
+            dw_dt = dw_dt * mask
 
         match synaptic_update_type:
             case SynapticUpdateType.RECURRENT:
@@ -558,9 +456,9 @@ class Layer(nn.Module):
                 second_term=second_term,
             )
 
-            # TODO: Remove this when we decouple the logging for the
-            # pointcloud benchmark from the model code
-            self.data: torch.Tensor = data
+            # TODO: re-enable when we have a logging fn
+            #
+            # self.data: torch.Tensor = data
             # self.__log_equation_context(
             #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
@@ -620,30 +518,26 @@ class Layer(nn.Module):
         weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
 
     def train_synapses(self, spike: torch.Tensor, data: torch.Tensor) -> None:
-        with torch.no_grad():
-            # recurrent connections always trained
+        # recurrent connections always trained
+        self.train_excitatory_from_layer(
+            SynapticUpdateType.RECURRENT,
+            spike,
+            self.recurrent_filter_group,
+            self,
+            data)
+        self.train_inhibitory_from_layer(
+            SynapticUpdateType.RECURRENT, spike, self)
+
+        if self.next_layer is not None:
             self.train_excitatory_from_layer(
-                SynapticUpdateType.RECURRENT,
-                spike,
-                self.recurrent_filter_group,
-                self,
-                data)
+                SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
             self.train_inhibitory_from_layer(
-                SynapticUpdateType.RECURRENT, spike, self)
+                SynapticUpdateType.BACKWARD, spike, self.next_layer)
 
-            if self.next_layer is not None:
-                self.train_excitatory_from_layer(
-                    SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
-                self.train_inhibitory_from_layer(
-                    SynapticUpdateType.BACKWARD, spike, self.next_layer)
-
-            # if prev layer is None then forward connections driven by data
-            self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
-                                             self.forward_filter_group, self.prev_layer, data)
-
-            # no forward connections from data are treated as inhibitory
-            if self.prev_layer is not None:
-                self.train_inhibitory_from_layer(
-                    SynapticUpdateType.FORWARD, spike, self.prev_layer)
-
-            logging.debug(f"trained layer {self.layer_settings.layer_id} synapses")
+        # if prev layer is None then forward connections driven by data
+        self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
+                                         self.forward_filter_group, self.prev_layer, data)
+        # no forward connections from data are treated as inhibitory
+        if self.prev_layer is not None:
+            self.train_inhibitory_from_layer(
+                SynapticUpdateType.FORWARD, spike, self.prev_layer)

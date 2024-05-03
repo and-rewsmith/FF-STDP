@@ -25,7 +25,8 @@ class MovingAverageLIF:
             data_size=layer_settings.size, device=layer_settings.device)
         self.variance_moving_average = VarianceMovingAverage(
             tau_var=layer_settings.tau_var, device=layer_settings.device)
-        self.neuron_layer = LIF(layer_settings.decay_beta)
+        self.neuron_layer = LIF(layer_settings.decay_beta, layer_settings.threshold_scale,
+                                layer_settings.threshold_decay,)
         self.dt = layer_settings.dt
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
