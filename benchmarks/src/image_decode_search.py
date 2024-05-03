@@ -199,7 +199,6 @@ def bench_specific_seed(running_log: TextIO,
     dataset = ImageDataset(
         num_timesteps_each_image=20,
         num_switches=5,
-        switch_probability=0.25,
         device=DEVICE
     )
     settings = Settings(
@@ -227,12 +226,6 @@ def bench_specific_seed(running_log: TextIO,
         device=torch.device(DEVICE)
     )
 
-    dataset = ImageDataset(
-        num_timesteps_each_image=20,
-        num_switches=5,
-        switch_probability=0.25,
-        device=DEVICE
-    )
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
     net = Net(settings).to(settings.device)
@@ -261,7 +254,6 @@ def bench_specific_seed(running_log: TextIO,
     dataset = ImageDataset(
         num_timesteps_each_image=20,
         num_switches=5,
-        switch_probability=0.25,
         device=DEVICE,
         max_samples=1024
     )
@@ -339,5 +331,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/trst6ycb"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/fuxyh0fk"
+
     wandb.agent(sweep_id, function=objective)

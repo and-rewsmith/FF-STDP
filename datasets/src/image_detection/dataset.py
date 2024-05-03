@@ -10,14 +10,12 @@ class ImageDataset(Dataset):
     def __init__(self,
                  num_timesteps_each_image: int,
                  num_switches: int,
-                 switch_probability: float,
                  device: str,
                  max_samples: int = 1024 * 8) -> None:
         self.num_classes = 10
         self.num_timesteps_each_image = num_timesteps_each_image
         self.num_switches = num_switches
         self.images = [num for num in range(0, self.num_classes)]
-        self.switch_probability = switch_probability
         self.len = max_samples
         self.device = device
 
@@ -31,24 +29,12 @@ class ImageDataset(Dataset):
                     idx: Union[int,
                                List[int],
                                torch.Tensor]) -> torch.Tensor:
-        initial_image_index = random.randint(0, len(self.images)-1)
-        switch_image_index = -1
-        while switch_image_index == -1 or initial_image_index == switch_image_index:
-            switch_image_index = random.randint(0, len(self.images)-1)
-
         out = []  # List to store image indices
         out_labels = []  # List to store switch labels
-        switch = False
         for i in range(self.num_switches):
-            if switch:
-                out.extend([switch_image_index] * self.num_timesteps_each_image)
-                out_labels.append(switch_image_index)
-            else:
-                out.extend([initial_image_index] * self.num_timesteps_each_image)
-                out_labels.append(initial_image_index)
-
-            if not switch:
-                switch = random.random() < self.switch_probability
+            image_index = random.randint(0, len(self.images)-1)
+            out.extend([image_index] * self.num_timesteps_each_image)
+            out_labels.append(image_index)
 
         # out: List of image indices
         #   Dimensions: (num_switches * num_timesteps_each_image,)
