@@ -32,8 +32,8 @@ class MovingAverageLIF:
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         spike = self.neuron_layer.forward(current)
 
-        mean_spike = self.spike_moving_average.apply(spike, self.dt)
-        self.variance_moving_average.apply(spike, mean_spike, self.dt)
+        mean_spike = self.spike_moving_average.apply(spike)
+        self.variance_moving_average.apply(spike, mean_spike)
 
         return (spike)
 
