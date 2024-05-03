@@ -518,26 +518,27 @@ class Layer(nn.Module):
         weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
 
     def train_synapses(self, spike: torch.Tensor, data: torch.Tensor) -> None:
-        # recurrent connections always trained
-        self.train_excitatory_from_layer(
-            SynapticUpdateType.RECURRENT,
-            spike,
-            self.recurrent_filter_group,
-            self,
-            data)
-        self.train_inhibitory_from_layer(
-            SynapticUpdateType.RECURRENT, spike, self)
-
-        if self.next_layer is not None:
+        with torch.no_grad():
+            # recurrent connections always trained
             self.train_excitatory_from_layer(
-                SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
+                SynapticUpdateType.RECURRENT,
+                spike,
+                self.recurrent_filter_group,
+                self,
+                data)
             self.train_inhibitory_from_layer(
-                SynapticUpdateType.BACKWARD, spike, self.next_layer)
+                SynapticUpdateType.RECURRENT, spike, self)
 
-        # if prev layer is None then forward connections driven by data
-        self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
-                                         self.forward_filter_group, self.prev_layer, data)
-        # no forward connections from data are treated as inhibitory
-        if self.prev_layer is not None:
-            self.train_inhibitory_from_layer(
-                SynapticUpdateType.FORWARD, spike, self.prev_layer)
+            if self.next_layer is not None:
+                self.train_excitatory_from_layer(
+                    SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
+                self.train_inhibitory_from_layer(
+                    SynapticUpdateType.BACKWARD, spike, self.next_layer)
+
+            # if prev layer is None then forward connections driven by data
+            self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
+                                             self.forward_filter_group, self.prev_layer, data)
+            # no forward connections from data are treated as inhibitory
+            if self.prev_layer is not None:
+                self.train_inhibitory_from_layer(
+                    SynapticUpdateType.FORWARD, spike, self.prev_layer)
