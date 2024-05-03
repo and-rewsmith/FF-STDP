@@ -11,7 +11,6 @@ import string
 import time
 from typing import Any, List, TextIO
 
-from profilehooks import profile
 import pandas as pd
 from tqdm import tqdm
 import wandb
@@ -174,7 +173,6 @@ def objective() -> None:
     wandb.log({"average_image_predict_success": cum_pass_rate / NUM_SEEDS_BENCH})
 
 
-@profile(stdout=False, filename='baseline.prof', skip=False)
 def bench_specific_seed(running_log: TextIO,
                         layer_sizes: list[int],
                         learning_rate: float,
@@ -292,7 +290,6 @@ def bench_specific_seed(running_log: TextIO,
     running_log.flush()
     logging.info(message)
 
-    print("done profile!--------------------")
     return pass_rate
 
 
