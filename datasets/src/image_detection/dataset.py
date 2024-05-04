@@ -11,7 +11,7 @@ class ImageDataset(Dataset):
                  num_timesteps_each_image: int,
                  num_switches: int,
                  device: str,
-                 max_samples: int = 1024 * 8) -> None:
+                 max_samples: int = 1024 * 5) -> None:
         self.num_classes = 10
         self.num_timesteps_each_image = num_timesteps_each_image
         self.num_switches = num_switches

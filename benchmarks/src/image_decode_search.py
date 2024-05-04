@@ -5,6 +5,7 @@ import sys
 # project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))  # nopep8
 # sys.path.insert(0, project_root)  # nopep8
 
+import math
 import logging
 import random
 import string
@@ -29,11 +30,11 @@ from model.src.settings import Settings
 from model.src.visualizer import NetworkVisualizer
 
 # TODOPRE: Think about trade off between high and 1 batch size
-BATCH_SIZE = 64
-DECODER_EPOCHS_PER_TRIAL = 25
-DECODER_LR = 0.0005
+BATCH_SIZE = 128
+DECODER_EPOCHS_PER_TRIAL = 5
+DECODER_LR = 0.001
 DEVICE = "mps"
-NUM_SEEDS_BENCH = 2
+NUM_SEEDS_BENCH = 1
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
 RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
 
@@ -64,7 +65,7 @@ class Decoder(nn.Module):
         return torch.softmax(x, dim=-1)
         # return: (batch_size, num_switches, num_classes)
 
-    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
+    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, image_count: int, num_timesteps_each_image: int, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
 
@@ -73,17 +74,20 @@ class Decoder(nn.Module):
             outputs = self.forward(internal_state)
             # outputs: (batch_size, num_switches, num_classes)
 
-            # Reshape labels to match the output shape
-            labels = labels.view(-1, self.num_switches)
-            # labels: (batch_size, num_switches)
+            num_images_seen = math.ceil(image_count / num_timesteps_each_image)
+            outputs = outputs[:, :num_images_seen, :]
+            labels_clone = labels.clone().detach()
+            labels_clone = labels_clone[:, :num_images_seen]
+
+            # labels: (batch_size, num_images_seen)
 
             # Flatten outputs and labels for the loss calculation
-            outputs = outputs.view(-1, self.num_classes)
+            outputs = outputs.reshape(-1, self.num_classes)
             # outputs: (batch_size * num_switches, num_classes)
-            labels = labels.view(-1)
+            labels_clone = labels_clone.reshape(-1)
             # labels: (batch_size * num_switches,)
 
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs, labels_clone)
             wandb.log({"loss": loss.item()})
             # loss: scalar
 
@@ -235,19 +239,21 @@ def bench_specific_seed(running_log: TextIO,
         # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
         # batch: (batch_size, num_timesteps, data_size)
+        count = 0
         for timestep_data in tqdm(batch, leave=False):
+            count += 1
             # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
-        layer_activations = net.layer_activations()
-        # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
-        internal_state = torch.concat(layer_activations, dim=1)
-        # internal_state: (batch_size, sum(layer_sizes))
+            layer_activations = net.layer_activations()
+            # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
+            internal_state = torch.concat(layer_activations, dim=1)
+            # internal_state: (batch_size, sum(layer_sizes))
 
-        # Reshape labels to (batch_size, num_switches)
-        labels = labels.view(-1, dataset.num_switches)
+            # Reshape labels to (batch_size, num_switches)
+            labels = labels.view(-1, dataset.num_switches)
 
-        decoder.train(internal_state, labels)
+            decoder.train(internal_state, labels, count, dataset.num_timesteps_each_image)
 
     dataset = ImageDataset(
         num_timesteps_each_image=20,
@@ -304,30 +310,30 @@ if __name__ == "__main__":
     running_log.close()
     logging.debug(message)
 
-    # sweep_configuration = {
-    #     "method": "bayes",
-    #     "metric": {"goal": "maximize", "name": "average_image_predict_success"},
-    #     "parameters": {
-    #         "layer_sizes": {"values": [[75, 75, 75, 75], [100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600]]},
-    #         "learning_rate": {"min": 0.0001, "max": 0.01},
-    #         "dt": {"min": 0.001, "max": 1.0},
-    #         "percentage_inhibitory": {"min": 10, "max": 60},
-    #         "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
-    #         "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
-    #         "layer_sparsity": {"min": 0.1, "max": 0.9},
-    #         "tau_mean": {"min": 30, "max": 1800},
-    #         "tau_var": {"min": 0.01, "max": 0.1},
-    #         "tau_stdp": {"min": 0.01, "max": 0.1},
-    #         "tau_rise_alpha": {"min": 0.001, "max": 0.01},
-    #         "tau_fall_alpha": {"min": 0.005, "max": 0.05},
-    #         "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
-    #         "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
-    #         "decay_beta": {"min": 0.8, "max": 0.95},
-    #         "threshold_scale": {"min": 1.0, "max": 1.5},
-    #         "threshold_decay": {"min": 0.9, "max": 1.0},
-    #     },
-    # }
-    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/fuxyh0fk"
+    sweep_configuration = {
+        "method": "bayes",
+        "metric": {"goal": "maximize", "name": "average_image_predict_success"},
+        "parameters": {
+            "layer_sizes": {"values": [[75, 75, 75, 75], [100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600]]},
+            "learning_rate": {"min": 0.0001, "max": 0.01},
+            "dt": {"min": 0.001, "max": 1.0},
+            "percentage_inhibitory": {"min": 10, "max": 60},
+            "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
+            "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
+            "layer_sparsity": {"min": 0.1, "max": 0.9},
+            "tau_mean": {"min": 30, "max": 1800},
+            "tau_var": {"min": 0.01, "max": 0.1},
+            "tau_stdp": {"min": 0.01, "max": 0.1},
+            "tau_rise_alpha": {"min": 0.001, "max": 0.01},
+            "tau_fall_alpha": {"min": 0.005, "max": 0.05},
+            "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
+            "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
+            "decay_beta": {"min": 0.8, "max": 0.95},
+            "threshold_scale": {"min": 1.0, "max": 1.5},
+            "threshold_decay": {"min": 0.9, "max": 1.0},
+        },
+    }
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
+    # sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/j4lg34vv"
 
     wandb.agent(sweep_id, function=objective)
