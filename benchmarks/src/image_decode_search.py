@@ -31,8 +31,8 @@ from model.src.visualizer import NetworkVisualizer
 
 # TODOPRE: Think about trade off between high and 1 batch size
 BATCH_SIZE = 128
-DECODER_EPOCHS_PER_TRIAL = 5
-DECODER_LR = 0.001
+DECODER_EPOCHS_PER_TRIAL = 7
+DECODER_LR = 0.01
 DEVICE = "mps"
 NUM_SEEDS_BENCH = 1
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
@@ -65,7 +65,7 @@ class Decoder(nn.Module):
         return torch.softmax(x, dim=-1)
         # return: (batch_size, num_switches, num_classes)
 
-    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, image_count: int, num_timesteps_each_image: int, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
+    def train(self, internal_state: torch.Tensor, labels: torch.Tensor, image_count: int, num_timesteps_each_image: int, labels_prev: torch.Tensor, num_epochs: int = DECODER_EPOCHS_PER_TRIAL):
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
 
@@ -75,19 +75,21 @@ class Decoder(nn.Module):
             # outputs: (batch_size, num_switches, num_classes)
 
             num_images_seen = math.ceil(image_count / num_timesteps_each_image)
-            outputs = outputs[:, :num_images_seen, :]
             labels_clone = labels.clone().detach()
             labels_clone = labels_clone[:, :num_images_seen]
+            labels_prev_clone = labels_prev.clone().detach()
+            labels_prev_clone = labels_prev_clone[:, num_images_seen:]
+            merged_labels = torch.cat((labels_prev_clone, labels_clone), dim=1)
 
             # labels: (batch_size, num_images_seen)
 
             # Flatten outputs and labels for the loss calculation
             outputs = outputs.reshape(-1, self.num_classes)
             # outputs: (batch_size * num_switches, num_classes)
-            labels_clone = labels_clone.reshape(-1)
+            merged_labels = merged_labels.reshape(-1)
             # labels: (batch_size * num_switches,)
 
-            loss = criterion(outputs, labels_clone)
+            loss = criterion(outputs, merged_labels)
             wandb.log({"loss": loss.item()})
             # loss: scalar
 
@@ -234,26 +236,33 @@ def bench_specific_seed(running_log: TextIO,
     decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches,
                       num_classes=dataset.num_classes, device=DEVICE, hidden_sizes=[100, 50, 20])
 
+    prev_labels = None
+    batch_count = 0
     for batch, labels in tqdm(train_dataloader):
+        labels_untouched = labels.clone().detach()
         # batch: (num_timesteps, batch_size, data_size)
         # labels: (batch_size,)
         batch = batch.permute(1, 0, 2)
         # batch: (batch_size, num_timesteps, data_size)
-        count = 0
+        timestep_count = 0
         for timestep_data in tqdm(batch, leave=False):
-            count += 1
+            timestep_count += 1  # position here matters: predict current image rather than one timestep ago
             # timestep_data: (batch_size, data_size)
             net.process_data_single_timestep(timestep_data)
 
-            layer_activations = net.layer_activations()
-            # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
-            internal_state = torch.concat(layer_activations, dim=1)
-            # internal_state: (batch_size, sum(layer_sizes))
+            if batch_count >= 1:
+                layer_activations = net.layer_activations()
+                # layer_activations: List[torch.Tensor], each tensor of shape (batch_size, layer_size)
+                internal_state = torch.concat(layer_activations, dim=1)
+                # internal_state: (batch_size, sum(layer_sizes))
 
-            # Reshape labels to (batch_size, num_switches)
-            labels = labels.view(-1, dataset.num_switches)
+                # Reshape labels to (batch_size, num_switches)
+                labels = labels.view(-1, dataset.num_switches)
 
-            decoder.train(internal_state, labels, count, dataset.num_timesteps_each_image)
+                decoder.train(internal_state, labels, timestep_count, dataset.num_timesteps_each_image, prev_labels)
+
+        prev_labels = labels_untouched
+        batch_count += 1
 
     dataset = ImageDataset(
         num_timesteps_each_image=20,
