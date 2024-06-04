@@ -37,6 +37,7 @@ DEVICE = "mps"
 NUM_SEEDS_BENCH = 1
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
 RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
+NUM_NEURONS_CONNECT_ACROSS_LAYERS = 2
 
 
 class Decoder(nn.Module):
@@ -118,7 +119,6 @@ def objective() -> None:
     layer_sizes = wandb.config.layer_sizes
     learning_rate = wandb.config.learning_rate
     dt = wandb.config.dt
-    percentage_inhibitory = wandb.config.percentage_inhibitory
     exc_to_inhib_conn_c = wandb.config.exc_to_inhib_conn_c
     exc_to_inhib_conn_sigma_squared = wandb.config.exc_to_inhib_conn_sigma_squared
     layer_sparsity = wandb.config.layer_sparsity
@@ -132,6 +132,10 @@ def objective() -> None:
     tau_fall_epsilon = wandb.config.tau_fall_epsilon
     threshold_scale = wandb.config.threshold_scale
     threshold_decay = wandb.config.threshold_decay
+
+    # sum layer sizes to get total neurons
+    total_neurons = sum(layer_sizes)
+    percentage_inhibitory = NUM_NEURONS_CONNECT_ACROSS_LAYERS / total_neurons
 
     run_settings = f"""
     running with:
