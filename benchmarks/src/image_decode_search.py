@@ -121,7 +121,7 @@ def objective() -> None:
     dt = wandb.config.dt
     exc_to_inhib_conn_c = wandb.config.exc_to_inhib_conn_c
     exc_to_inhib_conn_sigma_squared = wandb.config.exc_to_inhib_conn_sigma_squared
-    layer_sparsity = wandb.config.layer_sparsity
+    percentage_inhibitory = wandb.config.percentage_inhibitory
     decay_beta = wandb.config.decay_beta
     tau_mean = wandb.config.tau_mean
     tau_var = wandb.config.tau_var
@@ -135,7 +135,7 @@ def objective() -> None:
 
     # sum layer sizes to get total neurons
     total_neurons = sum(layer_sizes)
-    percentage_inhibitory = NUM_NEURONS_CONNECT_ACROSS_LAYERS / total_neurons
+    layer_sparsity = NUM_NEURONS_CONNECT_ACROSS_LAYERS / total_neurons
 
     run_settings = f"""
     running with:
@@ -347,6 +347,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/LPL-SNN-4/nip2o8wt"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/wubn98il"
 
     wandb.agent(sweep_id, function=objective)
