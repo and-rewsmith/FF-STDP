@@ -319,30 +319,30 @@ if __name__ == "__main__":
     running_log.close()
     logging.debug(message)
 
-    sweep_configuration = {
-        "method": "bayes",
-        "metric": {"goal": "maximize", "name": "average_image_predict_success"},
-        "parameters": {
-            "layer_sizes": {"values": [[75, 75, 75, 75], [100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600]]},
-            "learning_rate": {"min": 0.0001, "max": 0.01},
-            "dt": {"min": 0.001, "max": 1.0},
-            "percentage_inhibitory": {"min": 10, "max": 60},
-            "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
-            "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
-            "layer_sparsity": {"min": 0.1, "max": 0.9},
-            "tau_mean": {"min": 30, "max": 1800},
-            "tau_var": {"min": 0.01, "max": 0.1},
-            "tau_stdp": {"min": 0.01, "max": 0.1},
-            "tau_rise_alpha": {"min": 0.001, "max": 0.01},
-            "tau_fall_alpha": {"min": 0.005, "max": 0.05},
-            "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
-            "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
-            "decay_beta": {"min": 0.8, "max": 0.95},
-            "threshold_scale": {"min": 1.0, "max": 1.5},
-            "threshold_decay": {"min": 0.9, "max": 1.0},
-        },
-    }
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    # sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/j4lg34vv"
+    # sweep_configuration = {
+    #     "method": "bayes",
+    #     "metric": {"goal": "maximize", "name": "average_image_predict_success"},
+    #     "parameters": {
+    #         "layer_sizes": {"values": [[75, 75, 75, 75], [100, 100, 100, 100], [200, 200, 200, 200], [400, 400, 400, 400], [600, 600, 600, 600]]},
+    #         "learning_rate": {"min": 0.0001, "max": 0.01},
+    #         "dt": {"min": 0.001, "max": 1.0},
+    #         "percentage_inhibitory": {"min": 10, "max": 60},
+    #         "exc_to_inhib_conn_c": {"min": 0.25, "max": 0.75},
+    #         "exc_to_inhib_conn_sigma_squared": {"min": 1, "max": 60},
+    #         "layer_sparsity": {"min": 0.1, "max": 0.9},
+    #         "tau_mean": {"min": 30, "max": 1800},
+    #         "tau_var": {"min": 0.01, "max": 0.1},
+    #         "tau_stdp": {"min": 0.01, "max": 0.1},
+    #         "tau_rise_alpha": {"min": 0.001, "max": 0.01},
+    #         "tau_fall_alpha": {"min": 0.005, "max": 0.05},
+    #         "tau_rise_epsilon": {"min": 0.002, "max": 0.02},
+    #         "tau_fall_epsilon": {"min": 0.01, "max": 0.1},
+    #         "decay_beta": {"min": 0.8, "max": 0.95},
+    #         "threshold_scale": {"min": 1.0, "max": 1.5},
+    #         "threshold_decay": {"min": 0.9, "max": 1.0},
+    #     },
+    # }
+    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
+    sweep_id = "and-rewsmith/LPL-SNN-4/nip2o8wt"
 
     wandb.agent(sweep_id, function=objective)
