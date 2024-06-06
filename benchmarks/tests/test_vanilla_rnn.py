@@ -9,7 +9,6 @@ class VanillaSpikingRNN(nn.Module):
     def __init__(self, settings: Settings):
         super().__init__()
 
-        # make settings for each layer
         network_layer_settings = []
         for i, size in enumerate(settings.layer_sizes):
             prev_size = settings.data_size if i == 0 else settings.layer_sizes[i - 1]
@@ -40,24 +39,34 @@ class VanillaSpikingRNN(nn.Module):
                                            settings.device)
             network_layer_settings.append(layer_settings)
 
-        # Initialize layers directly in a list since no training parameters are used
+        # Initialize layers
         self.layers = [MovingAverageLIF(layer_settings) for layer_settings in network_layer_settings]
 
-        # Fixed connections as regular tensors since they do not need to be parameters
+        # Initialize feedforward connections
         sizes_with_data_size = [settings.data_size] + settings.layer_sizes
-        self.connections = []
-        for size, next_size in zip(sizes_with_data_size[:-1], sizes_with_data_size[1:]):
-            self.connections.append(torch.rand(size, next_size, device=settings.device))
+        self.connections = [
+            torch.rand(size, next_size, device=settings.device)
+            for size, next_size in zip(sizes_with_data_size[:-1], sizes_with_data_size[1:])
+        ]
+
+        # Initialize recurrent connections for each layer
+        self.recurrent_connections = [
+            torch.rand(size, size, device=settings.device)
+            for size in settings.layer_sizes
+        ]
 
     def process_data_single_timestep(self, data):
-        current_input = data.unsqueeze(0) @ self.connections[0]
+        current_input = torch.matmul(data.unsqueeze(0), self.connections[0])
         for i, layer in enumerate(self.layers):
-            spikes = layer.forward(current_input)
+            # Recurrent input from spikes
+            recurrent_input = torch.matmul(layer.spike_moving_average.spike_rec[-1], self.recurrent_connections[i])
 
+            # Forward process
+            spikes = layer.forward(current_input + recurrent_input)
+
+            # Combine feedforward and recurrent inputs
             if i != len(self.layers) - 1:
                 current_input = torch.matmul(spikes, self.connections[i+1])
-
-        self.layers[-1].forward(current_input)
 
     def layer_activations(self):
         # Collect and return the latest spike recordings from each layer
@@ -77,7 +86,7 @@ def test_vanilla_spiking_rnn():
     model = VanillaSpikingRNN(settings)
 
     input_data = torch.randn(settings.data_size, device=settings.device)
-    for i in range(10):
+    for i in range(20):
         model.process_data_single_timestep(input_data)
     spikes = model.layer_activations()
     print("Latest spikes from each layer:", spikes)
