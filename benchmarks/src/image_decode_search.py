@@ -347,6 +347,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/wubn98il"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/0395t9b8"
 
     wandb.agent(sweep_id, function=objective)
