@@ -18,6 +18,7 @@ import wandb
 import torch
 from torch.utils.data import DataLoader
 from torch import nn
+from benchmarks.tests.test_vanilla_rnn import VanillaSpikingRNN
 
 from datasets.src.image_detection.dataset import ImageDataset
 from model.src import logging_util
@@ -236,7 +237,7 @@ def bench_specific_seed(running_log: TextIO,
 
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
-    net = Net(settings).to(settings.device)
+    net = VanillaSpikingRNN(settings).to(settings.device)
     decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches,
                       num_classes=dataset.num_classes, device=DEVICE, hidden_sizes=[100, 50, 20])
 

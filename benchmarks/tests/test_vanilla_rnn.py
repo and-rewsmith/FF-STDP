@@ -5,7 +5,7 @@ from torch.nn import functional as F
 from model.src.settings import LayerSettings, Settings
 from model.src.util import MovingAverageLIF
 
-torch.manual_seed(0)
+torch.manual_seed(5)
 
 
 class VanillaSpikingRNN(nn.Module):
@@ -17,29 +17,31 @@ class VanillaSpikingRNN(nn.Module):
             prev_size = settings.data_size if i == 0 else settings.layer_sizes[i - 1]
             next_size = settings.layer_sizes[i + 1] if i < len(settings.layer_sizes) - 1 else 0
             layer_id = i
-            layer_settings = LayerSettings(layer_id,
-                                           prev_size,
-                                           size,
-                                           next_size,
-                                           settings.batch_size,
-                                           settings.learning_rate,
-                                           settings.data_size,
-                                           settings.dt,
-                                           settings.percentage_inhibitory,
-                                           settings.exc_to_inhib_conn_c,
-                                           settings.exc_to_inhib_conn_sigma_squared,
-                                           settings.layer_sparsity,
-                                           settings.decay_beta,
-                                           settings.threshold_scale,
-                                           settings.threshold_decay,
-                                           settings.tau_mean,
-                                           settings.tau_var,
-                                           settings.tau_stdp,
-                                           settings.tau_rise_alpha,
-                                           settings.tau_fall_alpha,
-                                           settings.tau_rise_epsilon,
-                                           settings.tau_fall_epsilon,
-                                           settings.device)
+            layer_settings = LayerSettings(
+                layer_id,
+                prev_size,
+                size,
+                next_size,
+                settings.batch_size,
+                settings.learning_rate,
+                settings.data_size,
+                settings.dt,
+                settings.percentage_inhibitory,
+                settings.exc_to_inhib_conn_c,
+                settings.exc_to_inhib_conn_sigma_squared,
+                settings.layer_sparsity,
+                settings.decay_beta,
+                settings.threshold_scale,
+                settings.threshold_decay,
+                settings.tau_mean,
+                settings.tau_var,
+                settings.tau_stdp,
+                settings.tau_rise_alpha,
+                settings.tau_fall_alpha,
+                settings.tau_rise_epsilon,
+                settings.tau_fall_epsilon,
+                settings.device
+            )
             network_layer_settings.append(layer_settings)
 
         # Initialize layers
