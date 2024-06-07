@@ -1,34 +1,22 @@
-import os
-import sys
-
-# script_dir = os.path.dirname(os.path.abspath(__file__))  # nopep8
-# project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))  # nopep8
-# sys.path.insert(0, project_root)  # nopep8
-
 import math
 import logging
 import random
-import string
 import time
-from typing import Any, List, TextIO
+from typing import List, TextIO
 
-import pandas as pd
 from tqdm import tqdm
 import wandb
 import torch
 from torch.utils.data import DataLoader
 from torch import nn
-from benchmarks.tests.test_vanilla_rnn import VanillaSpikingRNN
+from profilehooks import profile
 
+from benchmarks.tests.test_vanilla_rnn import VanillaSpikingRNN
 from datasets.src.image_detection.dataset import ImageDataset
 from model.src import logging_util
 from benchmarks.src.pointcloud import ENCODE_SPIKE_TRAINS
-from datasets.src.zenke_2a.constants import TRAIN_DATA_PATH
-from datasets.src.zenke_2a.dataset import DatasetType, SequentialDataset
-from model.src.layer import Layer
 from model.src.network import Net
 from model.src.settings import Settings
-from model.src.visualizer import NetworkVisualizer
 
 # TODOPRE: Think about trade off between high and 1 batch size
 BATCH_SIZE = 128
@@ -184,6 +172,8 @@ def objective() -> None:
     wandb.log({"average_image_predict_success": cum_pass_rate / NUM_SEEDS_BENCH})
 
 
+@profile(stdout=False, filename='baseline.prof',
+         skip=False)
 def bench_specific_seed(running_log: TextIO,
                         layer_sizes: list[int],
                         learning_rate: float,
@@ -348,6 +338,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/0395t9b8"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/x1m8wuvg"
 
     wandb.agent(sweep_id, function=objective)

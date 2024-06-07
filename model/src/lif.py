@@ -49,9 +49,10 @@ class LIF(nn.Module):
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         if self.mem is None:
-            self.mem = torch.zeros_like(current, device=current.device)
-            self.prereset_mem = torch.zeros_like(current, device=current.device)
-            self.adaptive_threshold = torch.full_like(current, self.threshold, device=current.device)
+            self.mem = torch.zeros_like(current, device=current.device).requires_grad_(False)
+            self.prereset_mem = torch.zeros_like(current, device=current.device).requires_grad_(False)
+            self.adaptive_threshold = torch.full_like(
+                current, self.threshold, device=current.device).requires_grad_(False)
 
         # Update membrane potential: decay and add current
         self.mem = self.beta * self.mem + current
