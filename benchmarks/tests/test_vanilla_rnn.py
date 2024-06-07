@@ -5,8 +5,6 @@ from torch.nn import functional as F
 from model.src.settings import LayerSettings, Settings
 from model.src.util import MovingAverageLIF
 
-torch.manual_seed(5)
-
 
 class VanillaSpikingRNN(nn.Module):
     def __init__(self, settings: Settings):

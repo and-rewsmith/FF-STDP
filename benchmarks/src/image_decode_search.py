@@ -21,7 +21,6 @@ from model.src.settings import Settings
 # TODOPRE: Think about trade off between high and 1 batch size
 BATCH_SIZE = 128
 DECODER_EPOCHS_PER_TRIAL = 7
-DECODER_LR = 0.01
 DEVICE = "mps"
 NUM_SEEDS_BENCH = 1
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
@@ -194,6 +193,7 @@ def bench_specific_seed(running_log: TextIO,
                         threshold_decay: float) -> float:
     rand = random.randint(1000, 9999)
     torch.manual_seed(rand)
+    running_log.write(f"Seed: {rand}\n")
 
     dataset = ImageDataset(
         num_timesteps_each_image=20,
@@ -338,6 +338,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/ahv2pa50"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/zwsei3wk"
 
     wandb.agent(sweep_id, function=objective)

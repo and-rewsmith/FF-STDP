@@ -44,6 +44,6 @@ parameters:
   decay_beta:
     values: [0.8]
   threshold_scale:
-    values: [1.1]
+    values: [1.25]
   threshold_decay:
-    values: [.985]
+    values: [.8]
