@@ -52,9 +52,7 @@ class VanillaSpikingRNN(nn.Module):
 
         # Initialize feedforward connections
         self.connections = []
-        print(sizes_with_data_size)
         for size, next_size in zip(sizes_with_data_size[:-1], sizes_with_data_size[1:]):
-            print(size, next_size)
             linear = nn.Linear(size, next_size, bias=False).to(settings.device)
             linear.weight.requires_grad = False  # Disable gradients for weights
             self.connections.append(linear)
