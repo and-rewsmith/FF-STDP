@@ -172,7 +172,7 @@ def objective() -> None:
 
 
 @profile(stdout=False, filename='baseline.prof',
-         skip=False)
+         skip=True)
 def bench_specific_seed(running_log: TextIO,
                         layer_sizes: list[int],
                         learning_rate: float,
@@ -338,6 +338,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/vdgr78ug"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/c2ukb3e0"
 
     wandb.agent(sweep_id, function=objective)
