@@ -227,7 +227,7 @@ def bench_specific_seed(running_log: TextIO,
 
     train_dataloader = DataLoader(dataset, batch_size=settings.batch_size, shuffle=False)
 
-    net = VanillaSpikingRNN(settings).to(settings.device)
+    net = Net(settings).to(settings.device)
     decoder = Decoder(input_size=sum(layer_sizes), num_switches=dataset.num_switches,
                       num_classes=dataset.num_classes, device=DEVICE, hidden_sizes=[100, 50, 20])
 
@@ -338,6 +338,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/oh7quwpm"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/3mzvpmnm"
 
     wandb.agent(sweep_id, function=objective)
