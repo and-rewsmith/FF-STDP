@@ -23,7 +23,7 @@ THIS_TEST_NUM_DATAPOINTS = 8000
 
 def objective() -> None:
     wandb.init(
-        project="LPL-SNN-2",
+        project="LPL-SNN-4",
         config={
             "architecture": "initial",
             "dataset": "point-cloud",

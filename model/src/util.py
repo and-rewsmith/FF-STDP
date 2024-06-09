@@ -22,9 +22,9 @@ class MovingAverageLIF:
     def __init__(self, layer_settings: LayerSettings) -> None:
         self.spike_moving_average = SpikeMovingAverage(
             tau_mean=layer_settings.tau_mean, batch_size=layer_settings.batch_size,
-            data_size=layer_settings.size, device=layer_settings.device)
+            data_size=layer_settings.size, dt=layer_settings.dt, device=layer_settings.device)
         self.variance_moving_average = VarianceMovingAverage(
-            tau_var=layer_settings.tau_var, device=layer_settings.device)
+            tau_var=layer_settings.tau_var, dt=layer_settings.dt, device=layer_settings.device)
         self.neuron_layer = LIF(layer_settings.decay_beta, layer_settings.threshold_scale,
                                 layer_settings.threshold_decay,)
         self.dt = layer_settings.dt
@@ -32,8 +32,8 @@ class MovingAverageLIF:
     def forward(self, current: torch.Tensor) -> torch.Tensor:
         spike = self.neuron_layer.forward(current)
 
-        mean_spike = self.spike_moving_average.apply(spike, self.dt)
-        self.variance_moving_average.apply(spike, mean_spike, self.dt)
+        mean_spike = self.spike_moving_average.apply(spike)
+        self.variance_moving_average.apply(spike, mean_spike)
 
         return (spike)
 
@@ -56,7 +56,7 @@ class MovingAverageLIF:
 class DoubleExponentialFilter:
 
     def __init__(self, tau_rise: float, tau_fall: float,
-                 device: torch.device) -> None:
+                 dt: float, device: torch.device) -> None:
         """
         tau_rise:
          * This controls how quickly the filter responds to an increase in the
@@ -92,8 +92,10 @@ class DoubleExponentialFilter:
         self.tau_rise = tau_rise
         self.tau_fall = tau_fall
         self.device = device
+        self.decay_factor_rise = math.exp(-dt / self.tau_rise)
+        self.decay_factor_fall = math.exp(-dt / self.tau_fall)
 
-    def apply(self, value: torch.Tensor, dt: float = DT) -> torch.Tensor:
+    def apply(self, value: torch.Tensor) -> torch.Tensor:
         if self.rise is None:
             # Initialize rise based on the first error received
             self.rise = torch.zeros_like(value).to(self.device)
@@ -103,13 +105,11 @@ class DoubleExponentialFilter:
             self.fall = torch.zeros_like(value).to(self.device)
 
         # Apply the exponential decay to the rise state and add the error
-        decay_factor_rise = math.exp(-dt / self.tau_rise)
-        self.rise = self.rise * decay_factor_rise + value
+        self.rise = self.rise * self.decay_factor_rise + value
 
         # Apply the exponential decay to the fall state and add the rise state
-        decay_factor_fall = math.exp(-dt / self.tau_fall)
-        self.fall = self.fall * decay_factor_fall + \
-            (1 - decay_factor_fall) * self.rise
+        self.fall = self.fall * self.decay_factor_fall + \
+            (1 - self.decay_factor_fall) * self.rise
 
         return self.fall
 
@@ -119,17 +119,17 @@ class ExcitatorySynapseFilterGroup:
     def __init__(self, layer_settings: LayerSettings) -> None:
 
         self.first_term_alpha = DoubleExponentialFilter(
-            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, device=layer_settings.device)
+            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, dt=layer_settings.dt, device=layer_settings.device)
         self.first_term_epsilon = DoubleExponentialFilter(
-            layer_settings.tau_rise_epsilon, layer_settings.tau_fall_epsilon, device=layer_settings.device)
+            layer_settings.tau_rise_epsilon, layer_settings.tau_fall_epsilon, dt=layer_settings.dt, device=layer_settings.device)
         self.second_term_alpha = DoubleExponentialFilter(
-            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, device=layer_settings.device)
+            layer_settings.tau_rise_alpha, layer_settings.tau_fall_alpha, dt=layer_settings.dt, device=layer_settings.device)
 
 
 class SpikeMovingAverage:
 
     def __init__(self, batch_size: int, data_size: int,
-                 device: torch.device, tau_mean: float = TAU_MEAN) -> None:
+                 device: torch.device, dt: float, tau_mean: float = TAU_MEAN) -> None:
         """
         tau_mean:
          * A time constant that determines the smoothing factor for the moving average
@@ -150,8 +150,9 @@ class SpikeMovingAverage:
         for _ in range(MAX_RETAINED_SPIKES):
             self.spike_rec.append(torch.zeros(
                 batch_size, data_size).to(device=device))
+        self.decay_factor = math.exp(-dt / self.tau_mean)
 
-    def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor) -> torch.Tensor:
         self.spike_rec.append(spike)
 
         if self.mean is None:
@@ -160,8 +161,7 @@ class SpikeMovingAverage:
 
         # Apply the exponential decay to the mean state and add the new spike
         # value
-        decay_factor = math.exp(-dt / self.tau_mean)
-        self.mean = self.mean * decay_factor + (1 - decay_factor) * spike
+        self.mean = self.mean * self.decay_factor + (1 - self.decay_factor) * spike
 
         return self.mean
 
@@ -174,7 +174,7 @@ class SpikeMovingAverage:
 
 class VarianceMovingAverage:
 
-    def __init__(self, device: torch.device, tau_var: float = TAU_VAR) -> None:
+    def __init__(self, device: torch.device, dt: float, tau_var: float = TAU_VAR) -> None:
         """
         tau_var:
          * A time constant that sets the smoothing factor for the moving average
@@ -191,18 +191,17 @@ class VarianceMovingAverage:
         self.variance: Optional[torch.Tensor] = None
         self.tau_var: float = tau_var
         self.device = device
+        self.decay_factor = math.exp(-dt / self.tau_var)
 
-    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor,
-              dt: float = DT) -> torch.Tensor:
+    def apply(self, spike: torch.Tensor, spike_moving_average: torch.Tensor) -> torch.Tensor:
         if self.variance is None:
             # Initialize variance based on the first spike received
             self.variance = torch.zeros_like(spike).to(self.device)
 
         # Apply the exponential decay to the variance state and add the squared
         # deviation
-        decay_factor = math.exp(-dt / self.tau_var)
-        self.variance = self.variance * decay_factor + \
-            (1 - decay_factor) * (spike - spike_moving_average) ** 2
+        self.variance = self.variance * self.decay_factor + \
+            (1 - self.decay_factor) * (spike - spike_moving_average) ** 2
 
         assert self.variance is not None
         return self.variance
@@ -217,7 +216,7 @@ class VarianceMovingAverage:
 class InhibitoryPlasticityTrace:
 
     def __init__(self, trace_shape: Tuple[int, int],
-                 device: torch.device, tau_stdp: float = TAU_STDP) -> None:
+                 device: torch.device, dt: float, tau_stdp: float = TAU_STDP) -> None:
         """
         Zenke's paper uses a tau_stdp of 20ms.
 
@@ -227,10 +226,10 @@ class InhibitoryPlasticityTrace:
         self.device = device
         self.trace = torch.zeros(trace_shape).to(device)
         self.tau_stdp: float = tau_stdp
+        self.decay_factor = math.exp(-dt / self.tau_stdp)
 
-    def apply(self, spike: torch.Tensor, dt: float = DT) -> torch.Tensor:
-        decay_factor = math.exp(-dt / self.tau_stdp)
-        self.trace = self.trace * decay_factor + spike
+    def apply(self, spike: torch.Tensor) -> torch.Tensor:
+        self.trace = self.trace * self.decay_factor + spike
 
         return self.trace
 

@@ -30,8 +30,12 @@ class SparseLinear(nn.Module):
         super(SparseLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
+
         self.linear = nn.Linear(in_features, out_features, bias=bias)
         torch.nn.init.uniform_(self.linear.weight, a=0.1, b=1.0)
+        for param in self.linear.parameters():
+            param.requires_grad = False
+
         self.sparsity = sparsity
         self.mask: Optional[torch.Tensor] = None
         self.layer_settings = layer_settings
@@ -171,7 +175,10 @@ class Layer(nn.Module):
 
         trace_shape = (layer_settings.batch_size, layer_settings.size)
         self.inhibitory_trace = InhibitoryPlasticityTrace(
-            device=self.layer_settings.device, trace_shape=trace_shape, tau_stdp=layer_settings.tau_stdp)
+            device=self.layer_settings.device,
+            trace_shape=trace_shape,
+            dt=layer_settings.dt,
+            tau_stdp=layer_settings.tau_stdp)
 
         self.forward_counter = 0
 
@@ -352,112 +359,111 @@ class Layer(nn.Module):
             mask = mask.unsqueeze(0).expand(self.layer_settings.size, -1)
             assert mask.shape == (self.layer_settings.size, from_layer_size)
 
-        with torch.no_grad():
-            # first term
-            f_prime_u_i = ZENKE_BETA * \
-                (1 + ZENKE_BETA * abs(self.lif.mem() - THETA_REST)) ** (-2)
-            f_prime_u_i = f_prime_u_i.unsqueeze(2)
-            from_layer_most_recent_spike: torch.Tensor = from_layer.lif.spike_moving_average.spike_rec[
-                0] if from_layer is not None else data  # type: ignore [union-attr, assignment]
-            from_layer_most_recent_spike = from_layer_most_recent_spike.unsqueeze(
-                1)
-            first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
-            first_term_epsilon = filter_group.first_term_epsilon.apply(
-                first_term_no_filter, self.layer_settings.dt)
-            first_term_alpha = filter_group.first_term_alpha.apply(
-                first_term_epsilon, self.layer_settings.dt)
+        # first term
+        f_prime_u_i = ZENKE_BETA * \
+            (1 + ZENKE_BETA * abs(self.lif.mem() - THETA_REST)) ** (-2)
+        f_prime_u_i = f_prime_u_i.unsqueeze(2)
+        from_layer_most_recent_spike: torch.Tensor = from_layer.lif.spike_moving_average.spike_rec[
+            0] if from_layer is not None else data  # type: ignore [union-attr, assignment]
+        from_layer_most_recent_spike = from_layer_most_recent_spike.unsqueeze(
+            1)
+        first_term_no_filter = f_prime_u_i @ from_layer_most_recent_spike
+        first_term_epsilon = filter_group.first_term_epsilon.apply(
+            first_term_no_filter)
+        first_term_alpha = filter_group.first_term_alpha.apply(
+            first_term_epsilon)
 
-            # assert shapes
-            assert f_prime_u_i.shape == (
-                self.layer_settings.batch_size, self.layer_settings.size, 1)
-            assert from_layer_most_recent_spike.shape == (
-                self.layer_settings.batch_size, 1, from_layer_size)
-            assert first_term_no_filter.shape == (self.layer_settings.batch_size,
-                                                  self.layer_settings.size, from_layer_size)
-            assert first_term_epsilon.shape == (self.layer_settings.batch_size,
-                                                self.layer_settings.size, from_layer_size)
-            assert first_term_alpha.shape == (self.layer_settings.batch_size,
+        # assert shapes
+        assert f_prime_u_i.shape == (
+            self.layer_settings.batch_size, self.layer_settings.size, 1)
+        assert from_layer_most_recent_spike.shape == (
+            self.layer_settings.batch_size, 1, from_layer_size)
+        assert first_term_no_filter.shape == (self.layer_settings.batch_size,
                                               self.layer_settings.size, from_layer_size)
+        assert first_term_epsilon.shape == (self.layer_settings.batch_size,
+                                            self.layer_settings.size, from_layer_size)
+        assert first_term_alpha.shape == (self.layer_settings.batch_size,
+                                          self.layer_settings.size, from_layer_size)
 
-            # second term
-            current_layer_most_recent_spike = self.lif.spike_moving_average.spike_rec[
-                0]
-            current_layer_delta_t_spikes_ago = self.lif.spike_moving_average.spike_rec[-1]
-            current_layer_spike_moving_average = self.lif.spike_moving_average.tracked_value()
-            current_layer_variance_moving_average = self.lif.variance_moving_average.tracked_value()
+        # second term
+        current_layer_most_recent_spike = self.lif.spike_moving_average.spike_rec[
+            0]
+        current_layer_delta_t_spikes_ago = self.lif.spike_moving_average.spike_rec[-1]
+        current_layer_spike_moving_average = self.lif.spike_moving_average.tracked_value()
+        current_layer_variance_moving_average = self.lif.variance_moving_average.tracked_value()
 
-            second_term_prediction_error = current_layer_most_recent_spike - \
-                current_layer_delta_t_spikes_ago
-            second_term_deviation_scale = LAMBDA_HEBBIAN / \
-                (current_layer_variance_moving_average + XI)
-            second_term_deviation = current_layer_most_recent_spike - \
-                current_layer_spike_moving_average
-            second_term_no_filter = -1 * \
-                (second_term_prediction_error) + second_term_deviation_scale * \
-                second_term_deviation + DELTA
-            # this can potentially be done after the filter
-            second_term_no_filter = second_term_no_filter.unsqueeze(
-                2).expand(-1, -1, from_layer_size)
-            second_term_alpha = filter_group.second_term_alpha.apply(
-                second_term_no_filter, self.layer_settings.dt)
+        second_term_prediction_error = current_layer_most_recent_spike - \
+            current_layer_delta_t_spikes_ago
+        second_term_deviation_scale = LAMBDA_HEBBIAN / \
+            (current_layer_variance_moving_average + XI)
+        second_term_deviation = current_layer_most_recent_spike - \
+            current_layer_spike_moving_average
+        second_term_no_filter = -1 * \
+            (second_term_prediction_error) + second_term_deviation_scale * \
+            second_term_deviation + DELTA
+        # this can potentially be done after the filter
+        second_term_no_filter = second_term_no_filter.unsqueeze(
+            2).expand(-1, -1, from_layer_size)
+        second_term_alpha = filter_group.second_term_alpha.apply(
+            second_term_no_filter)
 
-            # assert shapes
-            assert second_term_deviation.shape == (
-                self.layer_settings.batch_size, self.layer_settings.size)
-            assert second_term_no_filter.shape == (self.layer_settings.batch_size,
-                                                   self.layer_settings.size, from_layer_size)
-            assert second_term_alpha.shape == (self.layer_settings.batch_size,
+        # assert shapes
+        assert second_term_deviation.shape == (
+            self.layer_settings.batch_size, self.layer_settings.size)
+        assert second_term_no_filter.shape == (self.layer_settings.batch_size,
                                                self.layer_settings.size, from_layer_size)
+        assert second_term_alpha.shape == (self.layer_settings.batch_size,
+                                           self.layer_settings.size, from_layer_size)
 
-            # update weights
-            dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
-                                                         second_term_alpha)
+        # update weights
+        dw_dt = self.layer_settings.learning_rate * (first_term_alpha *
+                                                     second_term_alpha)
 
-            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
-            if from_layer is not None:
-                dw_dt = dw_dt * mask
+        dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+        if from_layer is not None:
+            dw_dt = dw_dt * mask
 
-            match synaptic_update_type:
-                case SynapticUpdateType.RECURRENT:
-                    weight_ref = self.recurrent_weights
-                case SynapticUpdateType.FORWARD:
-                    weight_ref = self.forward_weights
-                case SynapticUpdateType.BACKWARD:
-                    weight_ref = self.backward_weights
-                case _:
-                    raise ValueError("Invalid synaptic update type")
+        match synaptic_update_type:
+            case SynapticUpdateType.RECURRENT:
+                weight_ref = self.recurrent_weights
+            case SynapticUpdateType.FORWARD:
+                weight_ref = self.forward_weights
+            case SynapticUpdateType.BACKWARD:
+                weight_ref = self.backward_weights
+            case _:
+                raise ValueError("Invalid synaptic update type")
 
-            weight_ref.linear.weight += dw_dt
-            clamped_weights = torch.clamp(weight_ref.linear.weight, min=0)
-            weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
+        weight_ref.linear.weight += dw_dt
+        clamped_weights = torch.clamp(weight_ref.linear.weight, min=0)
+        weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
 
-            # only log for first layer and forward connections
-            # TODO: remove or refactor when learning rule is stable
-            if self.prev_layer is None and synaptic_update_type == SynapticUpdateType.FORWARD:
-                first_term = ExcitatorySynapticWeightEquation.FirstTerm(
-                    alpha_filter=first_term_alpha,
-                    epsilon_filter=first_term_epsilon,
-                    no_filter=first_term_no_filter,
-                    f_prime_u_i=f_prime_u_i,
-                    from_layer_most_recent_spike=from_layer_most_recent_spike
-                )
-                second_term = ExcitatorySynapticWeightEquation.SecondTerm(
-                    alpha_filter=second_term_alpha,
-                    no_filter=second_term_no_filter,
-                    prediction_error=second_term_prediction_error,
-                    deviation_scale=second_term_deviation_scale,
-                    deviation=second_term_deviation
-                )
-                synaptic_weight_equation = ExcitatorySynapticWeightEquation(
-                    first_term=first_term,
-                    second_term=second_term,
-                )
+        # only log for first layer and forward connections
+        # TODO: remove or refactor when learning rule is stable
+        if self.prev_layer is None and synaptic_update_type == SynapticUpdateType.FORWARD:
+            first_term = ExcitatorySynapticWeightEquation.FirstTerm(
+                alpha_filter=first_term_alpha,
+                epsilon_filter=first_term_epsilon,
+                no_filter=first_term_no_filter,
+                f_prime_u_i=f_prime_u_i,
+                from_layer_most_recent_spike=from_layer_most_recent_spike
+            )
+            second_term = ExcitatorySynapticWeightEquation.SecondTerm(
+                alpha_filter=second_term_alpha,
+                no_filter=second_term_no_filter,
+                prediction_error=second_term_prediction_error,
+                deviation_scale=second_term_deviation_scale,
+                deviation=second_term_deviation
+            )
+            synaptic_weight_equation = ExcitatorySynapticWeightEquation(
+                first_term=first_term,
+                second_term=second_term,
+            )
 
-                # TODO: re-enable when we have a logging fn
-                #
-                # self.data: torch.Tensor = data
-                # self.__log_equation_context(
-                #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
+            # TODO: re-enable when we have a logging fn
+            #
+            # self.data: torch.Tensor = data
+            # self.__log_equation_context(
+            #     synaptic_weight_equation, dw_dt, spike, self.lif.mem())
 
     def train_inhibitory_from_layer(self, synaptic_update_type: SynapticUpdateType, spike: torch.Tensor,
                                     from_layer: Self) -> None:
@@ -468,75 +474,74 @@ class Layer(nn.Module):
             self.layer_settings.size,
             from_layer.layer_settings.size)
 
-        self.inhibitory_trace.apply(spike, self.layer_settings.dt)
+        self.inhibitory_trace.apply(spike)
 
-        with torch.no_grad():
-            x_i = self.inhibitory_trace.tracked_value().unsqueeze(
-                2).expand(-1, -1, from_layer.layer_settings.size)
-            S_j = from_layer.lif.spike_moving_average.spike_rec[-1].unsqueeze(
-                1).expand(-1, self.layer_settings.size, -1)
-            assert x_i.shape == S_j.shape
+        x_i = self.inhibitory_trace.tracked_value().unsqueeze(
+            2).expand(-1, -1, from_layer.layer_settings.size)
+        S_j = from_layer.lif.spike_moving_average.spike_rec[-1].unsqueeze(
+            1).expand(-1, self.layer_settings.size, -1)
+        assert x_i.shape == S_j.shape
 
-            # x_i * S_j
-            first_term = (x_i - 2 * KAPPA *
-                          self.inhibitory_trace.tau_stdp) * S_j
-            assert first_term.shape == (self.layer_settings.batch_size,
-                                        self.layer_settings.size, from_layer.layer_settings.size)
+        # x_i * S_j
+        first_term = (x_i - 2 * KAPPA *
+                      self.inhibitory_trace.tau_stdp) * S_j
+        assert first_term.shape == (self.layer_settings.batch_size,
+                                    self.layer_settings.size, from_layer.layer_settings.size)
 
-            # S_i * x_j
-            S_i = self.lif.spike_moving_average.spike_rec[-1].unsqueeze(
-                2).expand(-1, -1, from_layer.layer_settings.size)
-            x_j = from_layer.inhibitory_trace.tracked_value().unsqueeze(1).expand(
-                -1, self.layer_settings.size, -1)
+        # S_i * x_j
+        S_i = self.lif.spike_moving_average.spike_rec[-1].unsqueeze(
+            2).expand(-1, -1, from_layer.layer_settings.size)
+        x_j = from_layer.inhibitory_trace.tracked_value().unsqueeze(1).expand(
+            -1, self.layer_settings.size, -1)
 
-            second_term = S_i * x_j
-            assert second_term.shape == (self.layer_settings.batch_size,
-                                         self.layer_settings.size, from_layer.layer_settings.size)
+        second_term = S_i * x_j
+        assert second_term.shape == (self.layer_settings.batch_size,
+                                     self.layer_settings.size, from_layer.layer_settings.size)
 
-            dw_dt = self.layer_settings.learning_rate * \
-                (first_term + second_term)
-            dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
+        dw_dt = self.layer_settings.learning_rate * \
+            (first_term + second_term)
+        dw_dt = dw_dt.sum(0) / dw_dt.shape[0]
 
-            # update weights and apply mask
-            dw_dt = dw_dt * mask
+        # update weights and apply mask
+        dw_dt = dw_dt * mask
 
-            # update weights
-            match synaptic_update_type:
-                case SynapticUpdateType.RECURRENT:
-                    weight_ref = self.recurrent_weights
-                case SynapticUpdateType.FORWARD:
-                    weight_ref = self.forward_weights
-                case SynapticUpdateType.BACKWARD:
-                    weight_ref = self.backward_weights
-                case _:
-                    raise ValueError("Invalid synaptic update type")
+        # update weights
+        match synaptic_update_type:
+            case SynapticUpdateType.RECURRENT:
+                weight_ref = self.recurrent_weights
+            case SynapticUpdateType.FORWARD:
+                weight_ref = self.forward_weights
+            case SynapticUpdateType.BACKWARD:
+                weight_ref = self.backward_weights
+            case _:
+                raise ValueError("Invalid synaptic update type")
 
-            weight_ref.linear.weight += dw_dt
-            clamped_weights = torch.clamp(weight_ref.linear.weight, min=0)
-            weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
+        weight_ref.linear.weight += dw_dt
+        clamped_weights = torch.clamp(weight_ref.linear.weight, min=0)
+        weight_ref.linear.weight = torch.nn.Parameter(clamped_weights)
 
     def train_synapses(self, spike: torch.Tensor, data: torch.Tensor) -> None:
-        # recurrent connections always trained
-        self.train_excitatory_from_layer(
-            SynapticUpdateType.RECURRENT,
-            spike,
-            self.recurrent_filter_group,
-            self,
-            data)
-        self.train_inhibitory_from_layer(
-            SynapticUpdateType.RECURRENT, spike, self)
-
-        if self.next_layer is not None:
+        with torch.no_grad():
+            # recurrent connections always trained
             self.train_excitatory_from_layer(
-                SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
+                SynapticUpdateType.RECURRENT,
+                spike,
+                self.recurrent_filter_group,
+                self,
+                data)
             self.train_inhibitory_from_layer(
-                SynapticUpdateType.BACKWARD, spike, self.next_layer)
+                SynapticUpdateType.RECURRENT, spike, self)
 
-        # if prev layer is None then forward connections driven by data
-        self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
-                                         self.forward_filter_group, self.prev_layer, data)
+            if self.next_layer is not None:
+                self.train_excitatory_from_layer(
+                    SynapticUpdateType.BACKWARD, spike, self.backward_filter_group, self.next_layer, data)
+                self.train_inhibitory_from_layer(
+                    SynapticUpdateType.BACKWARD, spike, self.next_layer)
 
-        # no forward connections from data are treated as inhibitory
-        if self.prev_layer is not None:
-            self.train_inhibitory_from_layer(
-                SynapticUpdateType.FORWARD, spike, self.prev_layer)
+            # if prev layer is None then forward connections driven by data
+            self.train_excitatory_from_layer(SynapticUpdateType.FORWARD, spike,
+                                             self.forward_filter_group, self.prev_layer, data)
+            # no forward connections from data are treated as inhibitory
+            if self.prev_layer is not None:
+                self.train_inhibitory_from_layer(
+                    SynapticUpdateType.FORWARD, spike, self.prev_layer)

@@ -4,11 +4,11 @@ import torch
 import torch.nn as nn
 
 
-class SpikeOperator():
+class SpikeOperator:
     @staticmethod
     def forward(mem: torch.Tensor, threshold: torch.Tensor) -> torch.Tensor:
-        spk = torch.where(mem > threshold, torch.as_tensor(1.0, device=mem.device),
-                          torch.as_tensor(0.0, device=mem.device))
+        mask = mem > threshold
+        spk = mask.to(dtype=torch.float, device=mem.device)
         return spk
 
 
@@ -41,20 +41,22 @@ class LIF(nn.Module):
         self.threshold = threshold
         self.threshold_scale = threshold_scale
         self.threshold_decay = threshold_decay
-        self.spike_op = SpikeOperator.forward
 
-        self.mem: torch.Tensor
-        self.prereset_mem: torch.Tensor
-        self.adaptive_threshold: torch.Tensor
+        self.spike_op = SpikeOperator.forward
+        self.mem: Optional[torch.Tensor] = None
+        self.prereset_mem: Optional[torch.Tensor] = None
+        self.adaptive_threshold: Optional[torch.Tensor] = None
 
     def forward(self, current: torch.Tensor) -> torch.Tensor:
-        if not hasattr(self, 'mem'):
-            self.mem = torch.zeros_like(current)
-            self.prereset_mem = torch.zeros_like(current)
-            self.adaptive_threshold = torch.full_like(current, self.threshold)
+        if self.mem is None:
+            self.mem = torch.zeros_like(current, device=current.device).requires_grad_(False)
+            self.prereset_mem = torch.zeros_like(current, device=current.device).requires_grad_(False)
+            self.adaptive_threshold = torch.full_like(
+                current, self.threshold, device=current.device).requires_grad_(False)
 
         # Update membrane potential: decay and add current
         self.mem = self.beta * self.mem + current
+
         self.prereset_mem = self.mem.clone()
 
         # Spike if membrane potential exceeds adaptive threshold
@@ -65,7 +67,10 @@ class LIF(nn.Module):
         self.mem -= reset
 
         # Update adaptive threshold
-        self.adaptive_threshold = torch.where(spk.bool(), self.adaptive_threshold * self.threshold_scale,
-                                              self.adaptive_threshold * self.threshold_decay)
+        self.adaptive_threshold = torch.where(
+            spk.bool(),
+            self.adaptive_threshold * self.threshold_scale,
+            self.adaptive_threshold * self.threshold_decay
+        )
 
         return spk
