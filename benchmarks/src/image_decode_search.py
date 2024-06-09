@@ -22,7 +22,7 @@ from model.src.settings import Settings
 BATCH_SIZE = 128
 DECODER_EPOCHS_PER_TRIAL = 7
 DEVICE = "mps"
-NUM_SEEDS_BENCH = 1
+NUM_SEEDS_BENCH = 4
 datetime_str = time.strftime("%Y%m%d-%H%M%S")
 RUNNING_LOG_FILENAME = f"running_log_{datetime_str}.log"
 NUM_NEURONS_CONNECT_ACROSS_LAYERS = 2
@@ -338,6 +338,6 @@ if __name__ == "__main__":
     #     },
     # }
     # sweep_id = wandb.sweep(sweep=sweep_configuration, project="LPL-SNN-4")
-    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/c2ukb3e0"
+    sweep_id = "and-rewsmith/FF-STDP-benchmarks_src/oh7quwpm"
 
     wandb.agent(sweep_id, function=objective)
